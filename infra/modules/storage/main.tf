@@ -17,10 +17,10 @@ resource "azurerm_storage_account" "this" {
   account_kind             = "StorageV2"
   is_hns_enabled           = true # ADLS Gen2
 
-  min_tls_version               = "TLS1_2"
-  https_traffic_only_enabled    = true
+  min_tls_version                 = "TLS1_2"
+  https_traffic_only_enabled      = true
   allow_nested_items_to_be_public = false
-  public_network_access_enabled = var.public_network_access_enabled
+  public_network_access_enabled   = var.public_network_access_enabled
 
   # Terraform manages containers over the data plane during initial rollout;
   # end-state hardening (shared keys off) is documented in docs/network-design.md.

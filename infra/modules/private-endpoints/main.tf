@@ -33,19 +33,19 @@ resource "azurerm_private_dns_zone_virtual_network_link" "this" {
 locals {
   endpoints = {
     adls-dfs = {
-      target_id        = var.storage_account_id
-      subresource      = "dfs"
-      dns_zone_key     = "dfs"
+      target_id    = var.storage_account_id
+      subresource  = "dfs"
+      dns_zone_key = "dfs"
     }
     adls-blob = {
-      target_id        = var.storage_account_id
-      subresource      = "blob"
-      dns_zone_key     = "blob"
+      target_id    = var.storage_account_id
+      subresource  = "blob"
+      dns_zone_key = "blob"
     }
     keyvault = {
-      target_id        = var.key_vault_id
-      subresource      = "vault"
-      dns_zone_key     = "vault"
+      target_id    = var.key_vault_id
+      subresource  = "vault"
+      dns_zone_key = "vault"
     }
   }
 }

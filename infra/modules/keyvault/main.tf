@@ -10,7 +10,7 @@ resource "azurerm_key_vault" "this" {
   tenant_id           = var.tenant_id
   sku_name            = "standard"
 
-  enable_rbac_authorization = true
+  rbac_authorization_enabled = true
 
   # Dev/teardown friendliness: purge protection off so `terraform destroy`
   # leaves nothing behind (NFR-2); soft delete (7 days) still applies.

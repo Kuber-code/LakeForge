@@ -52,13 +52,13 @@ module "keyvault" {
 module "sql" {
   source = "../modules/sql"
 
-  base                = local.base
-  suffix              = random_string.suffix.result
-  resource_group_name = azurerm_resource_group.this.name
-  location            = var.location
-  aad_admin_object_id = data.azurerm_client_config.current.object_id
-  aad_admin_login     = data.azuread_user.deployer.user_principal_name
-  key_vault_id        = module.keyvault.key_vault_id
+  base                 = local.base
+  suffix               = random_string.suffix.result
+  resource_group_name  = azurerm_resource_group.this.name
+  location             = var.location
+  aad_admin_object_id  = data.azurerm_client_config.current.object_id
+  aad_admin_login      = data.azuread_user.deployer.user_principal_name
+  key_vault_id         = module.keyvault.key_vault_id
   databricks_egress_ip = module.network.nat_egress_ip
   client_ip_allowlist  = var.client_ip_allowlist
   tags                 = local.tags
