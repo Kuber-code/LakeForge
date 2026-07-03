@@ -59,6 +59,31 @@ resource "azurerm_role_assignment" "infra_tfstate" {
   principal_id         = azuread_service_principal.infra.object_id
 }
 
+# Account-plane exception: the Databricks ACCOUNT console REST API rejects
+# personal Microsoft accounts (MSA), so local Terraform runs cannot use the
+# human's azure-cli auth for account-level objects (UC groups, workspace
+# assignments). The infra SP is registered as a Databricks account admin and
+# authenticates with this Entra client secret — stored only in Key Vault,
+# 90-day rotation. Azure DevOps pipelines (P3) still use OIDC only.
+resource "time_rotating" "infra_secret" {
+  rotation_days = 90
+}
+
+resource "azuread_application_password" "infra_account_plane" {
+  application_id = azuread_application.infra.id
+  display_name   = "databricks-account-plane"
+  rotate_when_changed = {
+    rotation = time_rotating.infra_secret.id
+  }
+}
+
+resource "azurerm_key_vault_secret" "infra_client_secret" {
+  name         = "sp-infra-client-secret"
+  value        = azuread_application_password.infra_account_plane.value
+  key_vault_id = var.key_vault_id
+  content_type = "text/plain"
+}
+
 # OIDC federated credentials (no client secrets — NFR-1). Subjects arrive in
 # P3 with the Azure DevOps service connection; empty list until then.
 resource "azuread_application_federated_identity_credential" "infra" {
