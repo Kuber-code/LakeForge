@@ -1,0 +1,11 @@
+# Copy to terraform.tfvars (gitignored) and fill in.
+# Subscription/tenant come from the environment, not from tfvars:
+#   $env:ARM_SUBSCRIPTION_ID = (az account show --query id -o tsv)
+
+alert_email = "you@example.com"
+
+# location      = "westeurope"
+# budget_amount = 70   # EUR (~300 PLN)
+
+# Step 2 of FR-1.8 — flip storage & Key Vault to private-only after PE validation:
+# public_network_access_enabled = false
