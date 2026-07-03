@@ -57,6 +57,12 @@ variable "alert_email" {
   type        = string
 }
 
+variable "client_ip_allowlist" {
+  description = "Extra IPs allowed through the SQL firewall (e.g. your workstation for seeding). Set in terraform.tfvars (gitignored)."
+  type        = list(string)
+  default     = []
+}
+
 variable "devops_federation_subjects" {
   description = <<-EOT
     OIDC federated-credential subjects for the infra SP (FR-2.1), added in P3 when

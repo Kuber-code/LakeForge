@@ -14,6 +14,11 @@ output "dbx_container_subnet_name" {
   value = azurerm_subnet.dbx_container.name
 }
 
+output "nat_egress_ip" {
+  description = "Public IP all Databricks cluster egress goes through."
+  value       = azurerm_public_ip.nat.ip_address
+}
+
 output "privatelink_subnet_id" {
   value = azurerm_subnet.privatelink.id
 }
