@@ -68,7 +68,11 @@ Deploying straight to `public_network_access = false` fails: the machine running
 1. **Step 1** — `public_network_access_enabled = true` (default): full apply, seed SQL, upload a landing test file, validate that *from a cluster* `nslookup st....dfs.core.windows.net` returns `10.20.2.x` and reads succeed.
 2. **Step 2** — set `public_network_access_enabled = false` in `terraform.tfvars`, `terraform apply`: storage + KV go private-only (`default_action = Deny`). Re-run the cluster read to confirm nothing broke, and confirm laptop access now fails.
 
-Operational consequence, accepted for a portfolio project: after the flip, ad-hoc laptop access to storage/KV requires either temporarily re-enabling public access with `terraform apply`, or going through the workspace. CI in P3 uses Microsoft-hosted agents → the Terraform data-plane operations that need storage access must happen before the flip or via the `AzureServices` bypass.
+Operational consequences, accepted for a portfolio project:
+
+- ad-hoc laptop access to storage/KV requires temporarily re-enabling public access with `terraform apply` (or going through the workspace); Terraform itself refreshes KV secret resources over the data plane, so a dev session typically starts by flipping open and ends by flipping closed;
+- **serverless** SQL warehouses run in Databricks-managed VNets, *not* in ours — with storage public access denied they cannot reach ADLS until account-level Network Connectivity Config (NCC) private endpoints are set up (account console; pending, see identity matrix). Classic VNet-injected clusters are unaffected — they resolve the private endpoint. Grants were verified through the warehouse before the flip;
+- CI in P3 uses Microsoft-hosted agents → Terraform data-plane operations must happen before the flip or via the `AzureServices` bypass.
 
 ## NSGs
 
