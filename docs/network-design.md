@@ -72,7 +72,7 @@ Operational consequence, accepted for a portfolio project: after the flip, ad-ho
 
 ## NSGs
 
-- **Databricks subnets** (one NSG, both subnets): inbound worker-to-worker only; outbound worker-to-worker, 443→`AzureDatabricks`, 3306→`Sql` (metastore), 443→`Storage`, 9093→`EventHub`. Because the subnets are delegated, Azure's network-intent policy injects equivalent platform rules (prefixed `Microsoft.Databricks-workspaces_UseOnly_`) — ours mirror them so the posture is reviewable in code.
+- **Databricks subnets** (one NSG, both subnets): created **empty**; because the subnets are delegated, Azure's network-intent policy injects and *owns* the required rules (prefixed `Microsoft.Databricks-workspaces_UseOnly_`): worker-to-worker inbound/outbound within the VNet, and outbound 443/3306/8443-8451→`AzureDatabricks`, 3306→`Sql`, 443→`Storage`, 9093→`EventHub`. Terraform must not define these inline — an authoritative `security_rule` block tries to strip the injected rules and ARM rejects the update (`ConflictWithNetworkIntentPolicy`); the NSG therefore carries `ignore_changes = [security_rule]`. Lesson learned in the field, kept here on purpose.
 - **PE subnet**: inbound 443+1433 from the VNet, explicit deny-all after; PE network policies enabled so the NSG actually evaluates PE traffic.
 
 ## Cost anatomy (fixed monthly, EUR)

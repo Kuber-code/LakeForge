@@ -1,11 +1,15 @@
 # FR-1.3 — NSGs.
 #
-# Databricks subnets: one NSG associated to both host and container subnets.
-# Because the subnets are delegated to Microsoft.Databricks/workspaces, Azure's
-# network intent policy injects and maintains the required platform rules
-# (prefixed Microsoft.Databricks-workspaces_UseOnly_). The rules below mirror
-# the documented requirements explicitly so the security posture is readable
-# in code, not only in the portal.
+# Databricks subnets: one NSG associated to both host and container subnets,
+# created EMPTY on purpose. The subnets are delegated to
+# Microsoft.Databricks/workspaces, so Azure's network intent policy injects
+# and owns the required rules (prefixed Microsoft.Databricks-workspaces_UseOnly_):
+# worker-to-worker traffic, and outbound 443/3306/8443-8451 to the
+# AzureDatabricks/Sql/Storage/EventHub service tags. Inline rules here would
+# fight the policy: Terraform's authoritative security_rule block tries to
+# strip the injected rules and ARM rejects the update
+# (ConflictWithNetworkIntentPolicy). Hence: no inline rules + ignore_changes.
+# The effective rule set is documented in docs/network-design.md.
 
 resource "azurerm_network_security_group" "databricks" {
   name                = "nsg-dbx-${var.base}"
@@ -13,78 +17,9 @@ resource "azurerm_network_security_group" "databricks" {
   location            = var.location
   tags                = var.tags
 
-  # Inbound: only worker-to-worker traffic inside the VNet (NPIP: no
-  # control-plane inbound needed).
-  security_rule {
-    name                       = "databricks-worker-to-worker-inbound"
-    priority                   = 100
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "*"
-    source_port_range          = "*"
-    destination_port_range     = "*"
-    source_address_prefix      = "VirtualNetwork"
-    destination_address_prefix = "VirtualNetwork"
-  }
-
-  security_rule {
-    name                       = "databricks-worker-to-worker-outbound"
-    priority                   = 100
-    direction                  = "Outbound"
-    access                     = "Allow"
-    protocol                   = "*"
-    source_port_range          = "*"
-    destination_port_range     = "*"
-    source_address_prefix      = "VirtualNetwork"
-    destination_address_prefix = "VirtualNetwork"
-  }
-
-  security_rule {
-    name                       = "databricks-worker-to-webapp-outbound"
-    priority                   = 110
-    direction                  = "Outbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "443"
-    source_address_prefix      = "VirtualNetwork"
-    destination_address_prefix = "AzureDatabricks"
-  }
-
-  security_rule {
-    name                       = "databricks-worker-to-sql-outbound"
-    priority                   = 120
-    direction                  = "Outbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "3306"
-    source_address_prefix      = "VirtualNetwork"
-    destination_address_prefix = "Sql"
-  }
-
-  security_rule {
-    name                       = "databricks-worker-to-storage-outbound"
-    priority                   = 130
-    direction                  = "Outbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "443"
-    source_address_prefix      = "VirtualNetwork"
-    destination_address_prefix = "Storage"
-  }
-
-  security_rule {
-    name                       = "databricks-worker-to-eventhub-outbound"
-    priority                   = 140
-    direction                  = "Outbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "9093"
-    source_address_prefix      = "VirtualNetwork"
-    destination_address_prefix = "EventHub"
+  lifecycle {
+    # Rules are owned by the Databricks network intent policy.
+    ignore_changes = [security_rule]
   }
 }
 
@@ -100,6 +35,7 @@ resource "azurerm_subnet_network_security_group_association" "dbx_container" {
 
 # Private-endpoint subnet: restrictive — only HTTPS (storage/KV) and SQL from
 # inside the VNet may reach the private endpoints; everything else denied.
+# No delegation here, so these rules are fully Terraform-owned.
 resource "azurerm_network_security_group" "privatelink" {
   name                = "nsg-pe-${var.base}"
   resource_group_name = var.resource_group_name

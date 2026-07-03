@@ -12,7 +12,9 @@ resource "random_password" "sql_admin" {
 }
 
 resource "azurerm_mssql_server" "this" {
-  name                = "sql-${var.base}-${var.suffix}"
+  # Region in the name: a failed create reserves the bare name in the original
+  # region at ARM level, and the region is useful info anyway.
+  name                = "sql-${var.base}-${var.location}-${var.suffix}"
   resource_group_name = var.resource_group_name
   location            = var.location
   version             = "12.0"
