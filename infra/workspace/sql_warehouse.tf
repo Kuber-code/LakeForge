@@ -17,18 +17,34 @@ resource "databricks_sql_endpoint" "small" {
 resource "databricks_permissions" "warehouse" {
   sql_endpoint_id = databricks_sql_endpoint.small.id
 
-  access_control {
-    group_name       = databricks_group.engineers.display_name
-    permission_level = "CAN_USE"
-  }
-  access_control {
-    group_name       = databricks_group.analysts.display_name
-    permission_level = "CAN_USE"
-  }
-  access_control {
-    group_name       = databricks_group.jobs.display_name
-    permission_level = "CAN_USE"
+  # Group mode: the three lf_* groups. Fallback mode: the SPs directly (the
+  # human engineer is the warehouse creator and already has CAN_MANAGE).
+  dynamic "access_control" {
+    for_each = local.groups_enabled ? {
+      engineers = local.engineers_principal
+      analysts  = local.analysts_principal
+      jobs      = local.jobs_principal
+    } : {}
+    content {
+      group_name       = access_control.value
+      permission_level = "CAN_USE"
+    }
   }
 
-  depends_on = [databricks_mws_permission_assignment.groups]
+  dynamic "access_control" {
+    for_each = local.groups_enabled ? {} : {
+      analyst = local.analysts_principal
+      deploy  = local.jobs_principal
+    }
+    content {
+      service_principal_name = access_control.value
+      permission_level       = "CAN_USE"
+    }
+  }
+
+  depends_on = [
+    databricks_mws_permission_assignment.groups,
+    databricks_service_principal.deploy_ws,
+    databricks_service_principal.analyst_ws,
+  ]
 }
