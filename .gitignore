@@ -1,0 +1,48 @@
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+.terraform/
+.terraform.lock.hcl
+crash.log
+crash.*.log
+*.tfplan
+tfplan*
+
+# Allow example tfvars (placeholders only, no real values)
+!*.tfvars.example
+
+# Secrets / local config
+.env
+.env.*
+.databrickscfg
+*.pem
+*.key
+*.pfx
+secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Databricks
+.databricks/
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local scratch
+scratch/
+*.local.*
