@@ -68,5 +68,14 @@ container_name       = "$ContainerName"
 $backendPath = Join-Path $PSScriptRoot "..\backend.hcl"
 Set-Content -Path $backendPath -Value $backendHcl -Encoding utf8
 
-Write-Host "Backend config written to infra/backend.hcl (gitignored)."
+# The workspace stack reads core outputs via terraform_remote_state, which
+# cannot use partial backend config — generate its tfvars too (gitignored).
+$stateVars = @"
+state_resource_group_name  = "$ResourceGroup"
+state_storage_account_name = "$storageAccount"
+state_container_name       = "$ContainerName"
+"@
+Set-Content -Path (Join-Path $PSScriptRoot "..\workspace\remote-state.auto.tfvars") -Value $stateVars -Encoding utf8
+
+Write-Host "Backend config written to infra/backend.hcl and infra/workspace/remote-state.auto.tfvars (both gitignored)."
 Write-Host "Next: cd infra/core; terraform init -backend-config=`"../backend.hcl`""

@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars (gitignored) and fill in.
+# state_* values are auto-generated into remote-state.auto.tfvars by bootstrap.ps1.
+
+# Databricks account id: account console (accounts.azuredatabricks.net) → user menu.
+databricks_account_id = "00000000-0000-0000-0000-000000000000"
+
+# Metastore wiring — pick ONE:
+# (a) Azure auto-assigned a regional metastore to the workspace (default) → leave both unset
+# (b) existing metastore, workspace not assigned yet:
+# metastore_id = "<metastore-uuid>"
+# (c) no metastore in this region yet:
+# create_metastore = true
