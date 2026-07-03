@@ -31,6 +31,19 @@ module "storage" {
   tags                          = local.tags
 }
 
+module "keyvault" {
+  source = "../modules/keyvault"
+
+  base                          = local.base
+  suffix                        = random_string.suffix.result
+  resource_group_name           = azurerm_resource_group.this.name
+  location                      = var.location
+  tenant_id                     = data.azurerm_client_config.current.tenant_id
+  admin_object_id               = data.azurerm_client_config.current.object_id
+  public_network_access_enabled = var.public_network_access_enabled
+  tags                          = local.tags
+}
+
 module "network" {
   source = "../modules/network"
 
