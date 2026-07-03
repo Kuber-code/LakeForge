@@ -75,6 +75,19 @@ module "network" {
   tags                = local.tags
 }
 
+module "private_endpoints" {
+  source = "../modules/private-endpoints"
+
+  base                = local.base
+  resource_group_name = azurerm_resource_group.this.name
+  location            = var.location
+  vnet_id             = module.network.vnet_id
+  subnet_id           = module.network.privatelink_subnet_id
+  storage_account_id  = module.storage.storage_account_id
+  key_vault_id        = module.keyvault.key_vault_id
+  tags                = local.tags
+}
+
 module "databricks" {
   source = "../modules/databricks"
 
