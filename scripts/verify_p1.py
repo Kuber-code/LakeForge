@@ -96,6 +96,7 @@ def run_sql(w: WorkspaceClient, warehouse_id: str, statement: str) -> sql.Statem
 
 
 def check_grants(w_me: WorkspaceClient, host: str, warehouse_id: str, key_vault: str) -> None:
+    me_user = w_me.current_user.me().user_name
     for stmt in (
         "CREATE TABLE IF NOT EXISTS silver.p1_smoke_silver AS SELECT 1 AS id, 'secret-ish' AS payload",
         "CREATE TABLE IF NOT EXISTS gold.p1_smoke_gold  AS SELECT 1 AS id, 'public-ish' AS payload",
@@ -106,12 +107,16 @@ def check_grants(w_me: WorkspaceClient, host: str, warehouse_id: str, key_vault:
             return
     record("engineer can create tables in silver & gold", True)
 
+    # auth_type is explicit so a DATABRICKS_AUTH_TYPE env var can never silently
+    # turn "the analyst" into the human's azure-cli identity.
     analyst = WorkspaceClient(
         host=host,
+        auth_type="azure-client-secret",
         azure_client_id=kv_secret(key_vault, "sp-analyst-client-id"),
         azure_client_secret=kv_secret(key_vault, "sp-analyst-client-secret"),
         azure_tenant_id=az_tenant(),
     )
+    assert analyst.current_user.me().user_name != me_user, "analyst client resolved to the engineer identity"
 
     resp = run_sql(analyst, warehouse_id, "SELECT * FROM gold.p1_smoke_gold")
     record(
@@ -121,12 +126,11 @@ def check_grants(w_me: WorkspaceClient, host: str, warehouse_id: str, key_vault:
     )
 
     resp = run_sql(analyst, warehouse_id, "SELECT * FROM silver.p1_smoke_silver")
-    denied = resp.status.state == sql.StatementState.FAILED and (
-        "PERMISSION" in str(resp.status.error).upper() or "DENIED" in str(resp.status.error).upper()
-        or "INSUFFICIENT" in str(resp.status.error).upper()
+    status_text = f"{resp.status.state} {resp.status.error}"
+    denied = resp.status.state != sql.StatementState.SUCCEEDED and any(
+        k in status_text.upper() for k in ("PERMISSION", "DENIED", "INSUFFICIENT", "42501")
     )
-    record("analyst SP DENIED on silver (negative test)", denied,
-           str(resp.status.error and resp.status.error.message)[:120])
+    record("analyst SP DENIED on silver (negative test)", denied, status_text[:160])
 
 
 def main() -> None:
@@ -135,13 +139,16 @@ def main() -> None:
     p.add_argument("--cluster-id", required=True)
     p.add_argument("--warehouse-id", required=True)
     p.add_argument("--key-vault", required=True)
+    p.add_argument("--cluster-only", action="store_true",
+                   help="post-flip re-check: KV is private, so grant tests (which read KV from this machine) are skipped")
     args = p.parse_args()
 
-    me = WorkspaceClient(host=args.host)  # Azure CLI auth
+    me = WorkspaceClient(host=args.host, auth_type="azure-cli")
     print(f"authenticated as: {me.current_user.me().user_name}")
 
     check_cluster_reads_adls(me, args.cluster_id)
-    check_grants(me, args.host, args.warehouse_id, args.key_vault)
+    if not args.cluster_only:
+        check_grants(me, args.host, args.warehouse_id, args.key_vault)
 
     print("\n" + "=" * 60)
     failed = [r for r in RESULTS if not r[1]]
