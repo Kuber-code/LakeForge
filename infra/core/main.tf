@@ -74,3 +74,17 @@ module "network" {
   subnet_cidrs        = var.subnet_cidrs
   tags                = local.tags
 }
+
+module "databricks" {
+  source = "../modules/databricks"
+
+  base                         = local.base
+  resource_group_name          = azurerm_resource_group.this.name
+  location                     = var.location
+  vnet_id                      = module.network.vnet_id
+  host_subnet_name             = module.network.dbx_host_subnet_name
+  container_subnet_name        = module.network.dbx_container_subnet_name
+  host_nsg_association_id      = module.network.dbx_host_nsg_association_id
+  container_nsg_association_id = module.network.dbx_container_nsg_association_id
+  tags                         = local.tags
+}
