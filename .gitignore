@@ -13,6 +13,9 @@ tfplan*
 # Allow example tfvars (placeholders only, no real values)
 !*.tfvars.example
 
+# Generated backend config (contains state SA name — keep out of public repo)
+infra/backend.hcl
+
 # Secrets / local config
 .env
 .env.*
