@@ -57,6 +57,17 @@ variable "alert_email" {
   type        = string
 }
 
+variable "sql_location" {
+  description = <<-EOT
+    Region for the Azure SQL server; empty = var.location. Separate because
+    some credit/trial subscriptions have SQL provisioning disabled in popular
+    regions (e.g. westeurope) — SQL has no private endpoint in P1 scope, so a
+    neighbouring region only changes latency, not the security model.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "client_ip_allowlist" {
   description = "Extra IPs allowed through the SQL firewall (e.g. your workstation for seeding). Set in terraform.tfvars (gitignored)."
   type        = list(string)

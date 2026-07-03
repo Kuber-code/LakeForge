@@ -55,7 +55,7 @@ module "sql" {
   base                 = local.base
   suffix               = random_string.suffix.result
   resource_group_name  = azurerm_resource_group.this.name
-  location             = var.location
+  location             = var.sql_location != "" ? var.sql_location : var.location
   aad_admin_object_id  = data.azurerm_client_config.current.object_id
   aad_admin_login      = data.azuread_user.deployer.user_principal_name
   key_vault_id         = module.keyvault.key_vault_id
