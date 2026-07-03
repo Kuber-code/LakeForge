@@ -20,6 +20,17 @@ resource "azurerm_resource_group" "this" {
   tags     = local.tags
 }
 
+module "storage" {
+  source = "../modules/storage"
+
+  base                          = local.base
+  suffix                        = random_string.suffix.result
+  resource_group_name           = azurerm_resource_group.this.name
+  location                      = var.location
+  public_network_access_enabled = var.public_network_access_enabled
+  tags                          = local.tags
+}
+
 module "network" {
   source = "../modules/network"
 
