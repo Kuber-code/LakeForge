@@ -88,6 +88,19 @@ module "private_endpoints" {
   tags                = local.tags
 }
 
+module "identity" {
+  source = "../modules/identity"
+
+  base                       = local.base
+  resource_group_name        = azurerm_resource_group.this.name
+  resource_group_id          = azurerm_resource_group.this.id
+  location                   = var.location
+  storage_account_id         = module.storage.storage_account_id
+  key_vault_id               = module.keyvault.key_vault_id
+  devops_federation_subjects = var.devops_federation_subjects
+  tags                       = local.tags
+}
+
 module "databricks" {
   source = "../modules/databricks"
 
