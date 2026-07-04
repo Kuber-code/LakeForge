@@ -70,6 +70,37 @@ terraform init -backend-config="../backend.hcl"
 terraform apply
 ```
 
+## Running the Medallion pipelines (P2)
+
+All pipeline logic lives in the installable package [`src/lakeforge/`](src/lakeforge/);
+notebooks in [`notebooks/`](notebooks/) are thin entry points (E4). Manual run order:
+
+```powershell
+# 1. Drop distributor files into the landing volume (FR-4.1)
+python seed/generate_distributor_files.py --date 2026-07-04 --out out/
+databricks fs cp out/shipments_2026-07-04_1.csv dbfs:/Volumes/lakeforge_dev/bronze/landing/shipments/
+databricks fs cp out/returns_2026-07-04_1.json  dbfs:/Volumes/lakeforge_dev/bronze/landing/returns/
+
+# 2. In the workspace, run the notebooks in order (each is idempotent, FR-4.6):
+#    01_bronze_files  -> Auto Loader ingest (CSV/JSON, schema evolution, rescue column)
+#    02_bronze_sql    -> incremental JDBC from Azure SQL (watermark in ops.watermarks)
+#    03_silver        -> dedup + typing + SCD2 customers + MERGE upserts (CDF on silver.orders)
+#    04_gold          -> star schema + aggregates, then quality gates (fail -> job fails)
+#    99_cdf_demo      -> read the Change Data Feed on silver.orders
+```
+
+### Unit tests (local Spark)
+
+```bash
+pip install -e ".[dev]"
+pytest tests/
+```
+
+Tests run transformation logic (SCD2, MERGE upserts, gold star schema, quality
+gates) on a local Delta-enabled SparkSession — no Azure required. On Windows,
+local Spark needs Hadoop `winutils`; the simplest route is running pytest under
+WSL (any distro with Python 3.11+ and a JDK).
+
 ## Cost notes
 
 Target burn ≤ 300 PLN (~70 EUR)/month. Main fixed cost: 3 private endpoints (~35 PLN/mo each). Everything else is on-demand: serverless Azure SQL auto-pauses after 60 min, job clusters use spot + autotermination. An Azure budget with 50/80/100% alerts is part of the Terraform stack. `terraform destroy` leaves nothing billable.
