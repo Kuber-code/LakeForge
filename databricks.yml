@@ -1,0 +1,48 @@
+# Databricks Asset Bundle — LakeForge (FR-6.1).
+# dev/prod targets: different catalogs, run_as the deploy SP in prod,
+# schedule paused in dev (development mode pauses all triggers).
+
+bundle:
+  name: lakeforge
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Target Unity Catalog catalog.
+    default: lakeforge_dev
+  storage_account:
+    description: ADLS Gen2 account hosting the lakehouse containers.
+    default: stlakeforgedevsh93zt
+  notification_email:
+    description: Failure notifications go here (FR-5.1).
+    default: kuba.lichosik@gmail.com
+  spark_version:
+    description: Pinned LTS runtime for job clusters (FR-5.4).
+    default: 17.3.x-scala2.13
+  node_type:
+    description: Job cluster node type (FR-5.4).
+    default: Standard_D4s_v3
+  deploy_sp_application_id:
+    description: sp-lakeforge-deploy application id — prod run_as (FR-2.2).
+    default: 01e809d3-c4ad-43a2-8896-fa9be16a71a6
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://adb-7405607941001785.5.azuredatabricks.net
+    variables:
+      catalog: lakeforge_dev
+
+  prod:
+    mode: production
+    workspace:
+      host: https://adb-7405607941001785.5.azuredatabricks.net
+      root_path: /Workspace/lakeforge/prod
+    variables:
+      catalog: lakeforge_prod
+    run_as:
+      service_principal_name: ${var.deploy_sp_application_id}

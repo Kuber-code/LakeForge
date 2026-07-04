@@ -1,0 +1,128 @@
+# FR-5.1..5.4 — the Medallion multi-task job.
+#
+# DAG:  ingest_files ─┐
+#                     ├─> silver ─> silver_changed? ──true──> gold ─> refresh_metrics
+#       ingest_sql  ──┘                        └──false──> (gold skipped)
+#
+# - per-task retries: 2 with a growing back-off (Databricks retries are
+#   fixed-interval; 2 min minimum approximates the exponential intent)
+# - job timeout + failure e-mail (FR-5.1)
+# - triggers (FR-5.2): cron in prod; file-arrival on the landing volume in
+#   dev (development mode deploys it paused — unpause to demo)
+# - task values (FR-5.3): silver publishes rows_changed; the condition task
+#   skips the gold refresh when the silver delta is 0
+# - job clusters defined here in the bundle, pinned LTS runtime, spot with
+#   on-demand fallback, single-node for cost (FR-5.4 / NFR-2)
+
+resources:
+  jobs:
+    lakeforge_medallion:
+      name: lakeforge-medallion-${bundle.target}
+      timeout_seconds: 5400
+      max_concurrent_runs: 1
+
+      email_notifications:
+        on_failure:
+          - ${var.notification_email}
+
+      job_clusters:
+        - job_cluster_key: etl
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type}
+            num_workers: 0
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: local[*]
+            custom_tags:
+              ResourceClass: SingleNode
+              project: lakeforge
+            data_security_mode: SINGLE_USER
+            azure_attributes:
+              availability: SPOT_WITH_FALLBACK_AZURE
+              first_on_demand: 1
+              spot_bid_max_price: -1
+
+      tasks:
+        - task_key: ingest_files
+          job_cluster_key: etl
+          notebook_task:
+            notebook_path: ../notebooks/01_bronze_files.py
+            base_parameters: &nb_params
+              env: ${bundle.target}
+              storage_account: ${var.storage_account}
+          max_retries: 2
+          min_retry_interval_millis: 120000
+          timeout_seconds: 1800
+
+        - task_key: ingest_sql
+          job_cluster_key: etl
+          notebook_task:
+            notebook_path: ../notebooks/02_bronze_sql.py
+            base_parameters: *nb_params
+          max_retries: 2
+          min_retry_interval_millis: 120000
+          timeout_seconds: 1800
+
+        - task_key: silver
+          depends_on:
+            - task_key: ingest_files
+            - task_key: ingest_sql
+          job_cluster_key: etl
+          notebook_task:
+            notebook_path: ../notebooks/03_silver.py
+            base_parameters: *nb_params
+          max_retries: 2
+          min_retry_interval_millis: 120000
+          timeout_seconds: 1800
+
+        - task_key: silver_changed
+          depends_on:
+            - task_key: silver
+          condition_task:
+            op: GREATER_THAN
+            left: "{{tasks.silver.values.rows_changed}}"
+            right: "0"
+
+        - task_key: gold
+          depends_on:
+            - task_key: silver_changed
+              outcome: "true"
+          job_cluster_key: etl
+          notebook_task:
+            notebook_path: ../notebooks/04_gold.py
+            base_parameters: *nb_params
+          max_retries: 2
+          min_retry_interval_millis: 120000
+          timeout_seconds: 1800
+
+        - task_key: refresh_metrics
+          depends_on:
+            - task_key: gold
+          job_cluster_key: etl
+          notebook_task:
+            notebook_path: ../notebooks/05_refresh_metrics.py
+            base_parameters: *nb_params
+          max_retries: 2
+          min_retry_interval_millis: 120000
+          timeout_seconds: 900
+
+targets:
+  dev:
+    resources:
+      jobs:
+        lakeforge_medallion:
+          # FR-5.2 (dev): run when a distributor file lands. Development
+          # mode deploys triggers paused; unpause in the UI to demonstrate.
+          trigger:
+            file_arrival:
+              url: /Volumes/lakeforge_dev/bronze/landing/shipments/
+
+  prod:
+    resources:
+      jobs:
+        lakeforge_medallion:
+          # FR-5.2 (prod): daily 05:00 UTC.
+          schedule:
+            quartz_cron_expression: "0 0 5 * * ?"
+            timezone_id: UTC
