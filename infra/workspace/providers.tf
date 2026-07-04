@@ -35,7 +35,11 @@ provider "databricks" {
 # admin), NOT the human azure-cli session — the account REST API rejects
 # personal Microsoft accounts (MSA). The secret comes from Key Vault, never
 # from tfvars or env.
+# Read only in account-groups mode: in fallback mode nothing uses the account
+# provider, and skipping the read keeps `terraform plan` working from machines
+# that cannot reach the private Key Vault (FR-1.8 end state).
 data "azurerm_key_vault_secret" "infra_sp" {
+  count        = var.enable_account_groups ? 1 : 0
   name         = "sp-infra-client-secret"
   key_vault_id = local.core.key_vault_id
 }
@@ -45,6 +49,6 @@ provider "databricks" {
   host                = "https://accounts.azuredatabricks.net"
   account_id          = var.databricks_account_id
   azure_client_id     = local.core.infra_sp_client_id
-  azure_client_secret = data.azurerm_key_vault_secret.infra_sp.value
+  azure_client_secret = try(data.azurerm_key_vault_secret.infra_sp[0].value, null)
   azure_tenant_id     = data.azurerm_client_config.current.tenant_id
 }

@@ -99,6 +99,19 @@ resource "databricks_service_principal" "deploy_ws" {
   display_name   = "sp-lakeforge-deploy"
 }
 
+# The medallion job runs on job clusters defined in the bundle (FR-5.4);
+# creating them at run time requires this entitlement on the run-as identity.
+# Found on the first CI-driven run: PERMISSION_DENIED "not authorized to
+# create clusters".
+resource "databricks_entitlements" "deploy_ws" {
+  count                = local.groups_enabled ? 0 : 1
+  service_principal_id = databricks_service_principal.deploy_ws[0].id
+  # Authoritative resource: list everything the SP needs, not just the delta.
+  allow_cluster_create = true
+  workspace_access     = true
+  databricks_sql_access = true
+}
+
 resource "databricks_service_principal" "analyst_ws" {
   count          = local.groups_enabled ? 0 : 1
   application_id = local.core.analyst_sp_client_id

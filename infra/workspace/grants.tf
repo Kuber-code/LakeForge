@@ -5,7 +5,9 @@
 #
 #   engineers : everything in dev, read-only prod
 #   analysts  : SELECT on gold only (negative test: silver denied)
-#   jobs      : everything in prod (deploy SP; owns prod pipelines from P3)
+#   jobs      : everything in dev AND prod (deploy SP; since P3 the dev
+#               bundle deploys from CI run as this SP too, so it writes
+#               dev tables — not just prod)
 
 resource "databricks_grants" "catalog_dev" {
   catalog = databricks_catalog.env["dev"].name
@@ -20,7 +22,7 @@ resource "databricks_grants" "catalog_dev" {
   }
   grant {
     principal  = local.jobs_principal
-    privileges = ["USE_CATALOG", "USE_SCHEMA", "SELECT"]
+    privileges = ["ALL_PRIVILEGES"]
   }
 
   depends_on = [
