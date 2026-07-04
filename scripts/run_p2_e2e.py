@@ -298,8 +298,10 @@ def main() -> None:
             cfg_code,
             JDBC_SETUP,
             f"""
-            url = jdbc.url + ";user=" + jdbc.user + ";password=" + jdbc.password
-            conn = spark._sc._jvm.java.sql.DriverManager.getConnection(url)
+            # 3-arg overload: credentials never touch the URL, no escaping issues.
+            conn = spark._sc._jvm.java.sql.DriverManager.getConnection(
+                jdbc.url, jdbc.user, jdbc.password
+            )
             try:
                 stmt = conn.createStatement()
                 n = stmt.executeUpdate(

@@ -36,7 +36,8 @@ UPSERT_KEYS = {
 # Casts applied to the file-based sources (Auto Loader CSV reads as strings).
 FILE_CASTS: dict[str, dict[str, str]] = {
     "shipments": {
-        "shipment_id": "int",
+        # File-drop ids are date-derived (yyyymmddNNN) and overflow INT32.
+        "shipment_id": "bigint",
         "order_id": "int",
         "distributor": "string",
         "ship_date": "date",
@@ -44,7 +45,7 @@ FILE_CASTS: dict[str, dict[str, str]] = {
         "warehouse": "string",
     },
     "returns": {
-        "return_id": "int",
+        "return_id": "bigint",
         "order_id": "int",
         "product_sku": "string",
         "return_date": "date",
