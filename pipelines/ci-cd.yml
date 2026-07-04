@@ -95,23 +95,12 @@ stages:
                 databricks bundle deploy -t dev
                 databricks bundle run lakeforge_medallion -t dev
 
-          - task: AzureCLI@2
-            displayName: "Integration assert: gold row count > 0"
-            inputs:
-              azureSubscription: lakeforge-databricks
-              scriptType: bash
-              scriptLocation: inlineScript
-              inlineScript: |
-                set -euo pipefail
-                export DATABRICKS_AUTH_TYPE=azure-cli
-                export DATABRICKS_HOST=$(DATABRICKS_HOST)
-                COUNT=$(databricks api post /api/2.0/sql/statements --json '{
-                  "warehouse_id": "$(WAREHOUSE_ID)",
-                  "statement": "SELECT count(*) AS n FROM lakeforge_dev.gold.fact_sales",
-                  "wait_timeout": "50s"
-                }' | python3 -c "import json,sys; print(json.load(sys.stdin)['result']['data_array'][0][0])")
-                echo "gold.fact_sales rows: $COUNT"
-                test "$COUNT" -gt 0
+          # Integration assertion (FR-6.2): gold row count > 0 is enforced
+          # inside the smoke run itself — the job's quality gates include
+          # row_count_min(gold.fact_sales, 1) and fail the job (and therefore
+          # `bundle run` above) when gold is empty. A warehouse-side SELECT is
+          # deliberately not used here: the warehouse is serverless and cannot
+          # reach the private storage until the NCC lands in P4.
 
   - stage: DeployProd
     displayName: Deploy prod (approval gate)
