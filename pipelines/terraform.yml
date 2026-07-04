@@ -28,6 +28,15 @@ stages:
         pool:
           vmImage: ubuntu-latest
         steps:
+          # ubuntu-latest images no longer ship terraform (exit 127 otherwise).
+          - script: |
+              set -euo pipefail
+              TF_VERSION=1.9.8
+              curl -fsSL "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip" -o /tmp/tf.zip
+              sudo unzip -o /tmp/tf.zip -d /usr/local/bin
+              terraform version
+            displayName: Install Terraform
+
           - task: AzureCLI@2
             displayName: terraform plan (core + workspace)
             inputs:
@@ -45,10 +54,14 @@ stages:
                 terraform -chdir=infra/core fmt -check -recursive
                 terraform -chdir=infra/core init -backend-config=../backend.hcl -input=false
                 terraform -chdir=infra/core validate
-                terraform -chdir=infra/core plan -input=false -out=core.tfplan
+                # -refresh=false: the hosted agent cannot reach the private
+                # Key Vault, and refreshing azurerm_key_vault_secret reads the
+                # data plane. Changes touching KV secrets are applied from a
+                # trusted network instead (documented limitation of FR-1.8).
+                terraform -chdir=infra/core plan -input=false -refresh=false -out=core.tfplan
                 terraform -chdir=infra/workspace init -backend-config=../backend.hcl -input=false
                 terraform -chdir=infra/workspace validate
-                terraform -chdir=infra/workspace plan -input=false -out=workspace.tfplan
+                terraform -chdir=infra/workspace plan -input=false -refresh=false -out=workspace.tfplan
           - publish: infra
             artifact: tfplans
 
@@ -68,6 +81,13 @@ stages:
                 - checkout: self
                 - download: current
                   artifact: tfplans
+                - script: |
+                    set -euo pipefail
+                    TF_VERSION=1.9.8
+                    curl -fsSL "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip" -o /tmp/tf.zip
+                    sudo unzip -o /tmp/tf.zip -d /usr/local/bin
+                    terraform version
+                  displayName: Install Terraform
                 - task: AzureCLI@2
                   displayName: terraform apply saved plans
                   inputs:
