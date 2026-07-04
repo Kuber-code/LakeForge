@@ -56,3 +56,9 @@ variable "environments" {
   type        = list(string)
   default     = ["dev", "prod"]
 }
+
+variable "engineer_user_name" {
+  description = "Workspace user name of the human engineer (cluster single-user, fallback grants). Empty = current identity lookup; pinned in CI where the infra SP plans."
+  type        = string
+  default     = ""
+}

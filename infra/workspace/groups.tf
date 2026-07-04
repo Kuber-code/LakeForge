@@ -31,12 +31,21 @@ resource "databricks_group" "jobs" {
   display_name = "lf_jobs"
 }
 
-data "databricks_current_user" "me" {}
+# Read only when the human engineer's name isn't pinned: CI plans as the
+# infra SP, which is not (yet) a workspace user, so identity lookups come
+# from pipeline.tfvars there (same pattern as infra/core).
+data "databricks_current_user" "me" {
+  count = var.engineer_user_name == "" ? 1 : 0
+}
+
+locals {
+  engineer_user_name = var.engineer_user_name != "" ? var.engineer_user_name : data.databricks_current_user.me[0].user_name
+}
 
 data "databricks_user" "me_account" {
   count     = local.groups_enabled ? 1 : 0
   provider  = databricks.account
-  user_name = data.databricks_current_user.me.user_name
+  user_name = local.engineer_user_name
 }
 
 resource "databricks_service_principal" "deploy_account" {
@@ -107,8 +116,8 @@ resource "databricks_entitlements" "deploy_ws" {
   count                = local.groups_enabled ? 0 : 1
   service_principal_id = databricks_service_principal.deploy_ws[0].id
   # Authoritative resource: list everything the SP needs, not just the delta.
-  allow_cluster_create = true
-  workspace_access     = true
+  allow_cluster_create  = true
+  workspace_access      = true
   databricks_sql_access = true
 }
 
@@ -120,7 +129,7 @@ resource "databricks_service_principal" "analyst_ws" {
 
 # Principal names used by grants.tf / secret_scope.tf / sql_warehouse.tf.
 locals {
-  engineers_principal = local.groups_enabled ? databricks_group.engineers[0].display_name : data.databricks_current_user.me.user_name
+  engineers_principal = local.groups_enabled ? databricks_group.engineers[0].display_name : local.engineer_user_name
   analysts_principal  = local.groups_enabled ? databricks_group.analysts[0].display_name : databricks_service_principal.analyst_ws[0].application_id
   jobs_principal      = local.groups_enabled ? databricks_group.jobs[0].display_name : databricks_service_principal.deploy_ws[0].application_id
 

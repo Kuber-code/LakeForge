@@ -33,7 +33,7 @@ resource "databricks_cluster" "smoke" {
   }
 
   data_security_mode = "SINGLE_USER"
-  single_user_name   = data.databricks_current_user.me.user_name
+  single_user_name   = local.engineer_user_name
 
   azure_attributes {
     availability       = "SPOT_WITH_FALLBACK_AZURE"
