@@ -49,3 +49,9 @@ Thumbs.db
 # Local scratch
 scratch/
 *.local.*
+
+# Local Spark test residue and generated seed files
+spark-warehouse/
+metastore_db/
+derby.log
+out/

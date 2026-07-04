@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lakeforge"
+version = "0.1.0"
+description = "LakeForge Medallion pipelines (PySpark) - brewery sales & distribution lakehouse"
+requires-python = ">=3.11"
+readme = "README.md"
+# pyspark/delta are provided by the Databricks runtime (DBR LTS); they are
+# deliberately NOT runtime dependencies of the wheel.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pyspark==3.5.3",
+    "delta-spark==3.3.0",
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Databricks notebooks: dbutils/spark/display are runtime globals, and
+# sys.path setup must precede lakeforge imports.
+"notebooks/*" = ["F821", "E402"]
