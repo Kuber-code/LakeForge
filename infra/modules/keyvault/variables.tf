@@ -33,3 +33,9 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "azure_databricks_sp_object_id" {
+  description = "Pinned object id of the AzureDatabricks first-party SP; empty = Graph lookup (needs directory read rights)."
+  type        = string
+  default     = ""
+}

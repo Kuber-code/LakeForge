@@ -40,12 +40,19 @@ resource "azurerm_role_assignment" "admin" {
 # FR-2.4 — the KV-backed Databricks secret scope is read by the AzureDatabricks
 # first-party application (well-known app id), which needs a data-plane role in
 # RBAC mode; without it dbutils.secrets.get returns PERMISSION_DENIED.
+# Graph lookup only when the object id isn't pinned (CI plans as the infra SP,
+# which has no Graph read permission).
 data "azuread_service_principal" "azure_databricks" {
+  count     = var.azure_databricks_sp_object_id == "" ? 1 : 0
   client_id = "2ff814a6-3304-4ab8-85cb-cd0e6f879c1d"
 }
 
 resource "azurerm_role_assignment" "databricks_secret_scope" {
   scope                = azurerm_key_vault.this.id
   role_definition_name = "Key Vault Secrets User"
-  principal_id         = data.azuread_service_principal.azure_databricks.object_id
+  principal_id = (
+    var.azure_databricks_sp_object_id != ""
+    ? var.azure_databricks_sp_object_id
+    : data.azuread_service_principal.azure_databricks[0].object_id
+  )
 }

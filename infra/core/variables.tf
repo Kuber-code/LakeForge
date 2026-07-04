@@ -96,3 +96,27 @@ variable "tags" {
     managed_by = "terraform"
   }
 }
+
+# ── CI identity independence (FR-6.3) ──────────────────────────────────────
+# The pipeline plans as sp-lakeforge-infra, which is not a user and cannot
+# read Microsoft Graph. These pin the human-owner identity and well-known
+# object ids so plans are identical regardless of who runs them. Empty
+# values fall back to directory lookups (local human runs).
+
+variable "deployer_object_id" {
+  description = "Entra object id of the human platform owner (KV admin, SQL AAD admin). Empty = current identity."
+  type        = string
+  default     = ""
+}
+
+variable "deployer_upn" {
+  description = "UPN of the human platform owner for the SQL AAD admin login. Empty = Graph lookup of the current identity."
+  type        = string
+  default     = ""
+}
+
+variable "azure_databricks_sp_object_id" {
+  description = "Object id of the AzureDatabricks first-party app's SP in this tenant. Empty = Graph lookup."
+  type        = string
+  default     = ""
+}

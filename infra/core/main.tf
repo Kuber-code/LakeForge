@@ -1,13 +1,21 @@
 data "azurerm_client_config" "current" {}
 
 # UPN of the deploying human — becomes the Entra admin of the SQL server.
+# Read only when var.deployer_upn is unset: the CI pipeline plans as the
+# infra SP, which (a) is not a user and (b) has no Graph read permission,
+# so identity-derived values come from pipeline.tfvars there.
 data "azuread_user" "deployer" {
+  count     = var.deployer_upn == "" ? 1 : 0
   object_id = data.azurerm_client_config.current.object_id
 }
 
 locals {
   base = "${var.prefix}-${var.environment}" # e.g. lakeforge-dev
   tags = merge(var.tags, { environment = var.environment })
+
+  # Human platform-owner identity: explicit in CI, discovered locally.
+  deployer_object_id = var.deployer_object_id != "" ? var.deployer_object_id : data.azurerm_client_config.current.object_id
+  deployer_upn       = var.deployer_upn != "" ? var.deployer_upn : data.azuread_user.deployer[0].user_principal_name
 }
 
 # Deterministic-per-state random suffix for globally-unique names (storage, KV, SQL).
@@ -44,7 +52,8 @@ module "keyvault" {
   resource_group_name           = azurerm_resource_group.this.name
   location                      = var.location
   tenant_id                     = data.azurerm_client_config.current.tenant_id
-  admin_object_id               = data.azurerm_client_config.current.object_id
+  admin_object_id               = local.deployer_object_id
+  azure_databricks_sp_object_id = var.azure_databricks_sp_object_id
   public_network_access_enabled = var.public_network_access_enabled
   tags                          = local.tags
 }
@@ -56,8 +65,8 @@ module "sql" {
   suffix               = random_string.suffix.result
   resource_group_name  = azurerm_resource_group.this.name
   location             = var.sql_location != "" ? var.sql_location : var.location
-  aad_admin_object_id  = data.azurerm_client_config.current.object_id
-  aad_admin_login      = data.azuread_user.deployer.user_principal_name
+  aad_admin_object_id  = local.deployer_object_id
+  aad_admin_login      = local.deployer_upn
   key_vault_id         = module.keyvault.key_vault_id
   databricks_egress_ip = module.network.nat_egress_ip
   client_ip_allowlist  = var.client_ip_allowlist
