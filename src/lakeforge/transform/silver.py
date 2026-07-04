@@ -81,6 +81,31 @@ def _drop_bronze_meta(df: DataFrame) -> DataFrame:
     return df.drop("_source_system", "_source_table", "_rescued_data")
 
 
+def _last_op_changes(spark: SparkSession, target: str) -> int:
+    """Rows actually changed by the most recent commit on a Delta table.
+
+    Feeds the FR-5.3 conditional task ("skip gold when silver delta = 0"):
+    MERGE commits expose inserted/updated/deleted counts, plain writes expose
+    numOutputRows. All operationMetrics values are strings.
+
+    A no-op MERGE may not commit at all, so callers must check that the table
+    version advanced (see ``upsert``) before trusting the latest history row.
+    """
+    row = spark.sql(f"DESCRIBE HISTORY {target} LIMIT 1").collect()[0]
+    m = row["operationMetrics"] or {}
+    if row["operation"] == "MERGE":
+        return (
+            int(m.get("numTargetRowsInserted", "0"))
+            + int(m.get("numTargetRowsUpdated", "0"))
+            + int(m.get("numTargetRowsDeleted", "0"))
+        )
+    return int(m.get("numOutputRows", "0"))
+
+
+def _table_version(spark: SparkSession, target: str) -> int:
+    return spark.sql(f"DESCRIBE HISTORY {target} LIMIT 1").collect()[0]["version"]
+
+
 def scd2_upsert(
     spark: SparkSession,
     target: str,
@@ -88,7 +113,7 @@ def scd2_upsert(
     pk: str,
     tracked: list[str],
     effective_col: str = "modified_at",
-) -> None:
+) -> int:
     """Maintain an SCD Type 2 table via MERGE INTO (FR-4.3).
 
     ``updates`` must hold at most one row per key (use ``latest_per_key``
@@ -98,6 +123,8 @@ def scd2_upsert(
     The MERGE closes the current version of every key whose tracked columns
     changed (NULL-safe comparison); a second pass appends the new current
     versions. Unchanged rows fail the change predicate, so re-runs are no-ops.
+
+    Returns the number of new versions written (0 on a no-op re-run).
     """
     if not spark.catalog.tableExists(target):
         initial = updates.withColumns(
@@ -108,7 +135,7 @@ def scd2_upsert(
             }
         )
         initial.write.saveAsTable(target)
-        return
+        return _last_op_changes(spark, target)
 
     change_sql = " OR ".join(f"NOT (s.{c} <=> t.{c})" for c in tracked)
     updates.createOrReplaceTempView("_scd2_updates")
@@ -124,6 +151,8 @@ def scd2_upsert(
     )
 
     # Insert the new current version for keys that are new or just closed.
+    # Every changed key was closed above AND gets a row here, so the appended
+    # count alone is the number of changed customers (no double counting).
     current = spark.table(target).where("is_current = true").select(pk)
     new_versions = updates.join(current, on=pk, how="left_anti").withColumns(
         {
@@ -132,36 +161,54 @@ def scd2_upsert(
             "is_current": F.lit(True),
         }
     )
-    new_versions.write.mode("append").saveAsTable(target)
+    n_new = new_versions.count()
+    if n_new:
+        new_versions.write.mode("append").saveAsTable(target)
+    return n_new
 
 
-def upsert(spark: SparkSession, target: str, updates: DataFrame, pk: str) -> None:
-    """MERGE-by-key upsert used by every non-SCD2 silver table."""
+def upsert(spark: SparkSession, target: str, updates: DataFrame, pk: str) -> int:
+    """MERGE-by-key upsert used by every non-SCD2 silver table.
+
+    Returns the number of rows inserted/updated (0 on a no-op re-run).
+    """
     if not spark.catalog.tableExists(target):
         updates.write.saveAsTable(target)
-        return
+        return _last_op_changes(spark, target)
+
+    # Only touch rows whose business columns differ (metadata columns like
+    # _ingest_ts are excluded), so a re-run reports 0 changed rows (FR-4.6).
+    business = [c for c in updates.columns if not c.startswith("_") and c != pk]
+    change_sql = " OR ".join(f"NOT (s.{c} <=> t.{c})" for c in business)
 
     updates.createOrReplaceTempView("_upsert_updates")
+    version_before = _table_version(spark, target)
     spark.sql(
         f"""
         MERGE INTO {target} t
         USING _upsert_updates s
         ON t.{pk} = s.{pk}
-        WHEN MATCHED THEN UPDATE SET *
+        WHEN MATCHED AND ({change_sql}) THEN UPDATE SET *
         WHEN NOT MATCHED THEN INSERT *
         """
     )
+    # A no-op MERGE does not commit; without this check we would misread the
+    # previous commit's metrics as this run's changes.
+    if _table_version(spark, target) == version_before:
+        return 0
+    return _last_op_changes(spark, target)
 
 
 def run_silver(spark: SparkSession, cfg: LakeforgeConfig) -> dict[str, str]:
     """Bronze -> silver for all entities; returns metrics for ops logging."""
     metrics: dict[str, str] = {}
+    rows_changed = 0
 
     # SCD2 customers.
     customers = latest_per_key(
         _drop_bronze_meta(spark.table(cfg.table("bronze", "customers"))), "customer_id"
     )
-    scd2_upsert(
+    rows_changed += scd2_upsert(
         spark,
         cfg.table("silver", "customers"),
         customers,
@@ -198,7 +245,7 @@ def run_silver(spark: SparkSession, cfg: LakeforgeConfig) -> dict[str, str]:
                 "modified_at",
                 "_ingest_ts",
             )
-        upsert(spark, cfg.table("silver", table), updates, UPSERT_KEYS[table])
+        rows_changed += upsert(spark, cfg.table("silver", table), updates, UPSERT_KEYS[table])
         metrics[f"{table}_in"] = str(updates.count())
 
     # File-based entities: cast from Auto Loader strings, then upsert.
@@ -209,7 +256,7 @@ def run_silver(spark: SparkSession, cfg: LakeforgeConfig) -> dict[str, str]:
         updates = latest_per_key(
             apply_casts(spark.table(bronze), casts), UPSERT_KEYS[table], "_ingest_ts"
         )
-        upsert(spark, cfg.table("silver", table), updates, UPSERT_KEYS[table])
+        rows_changed += upsert(spark, cfg.table("silver", table), updates, UPSERT_KEYS[table])
         metrics[f"{table}_in"] = str(updates.count())
 
     # Referential check: orders must point at a known customer (any version).
@@ -219,5 +266,7 @@ def run_silver(spark: SparkSession, cfg: LakeforgeConfig) -> dict[str, str]:
         "customer_id",
     )
     metrics["orders_ref_violations"] = str(violations.count())
+    # Feeds the FR-5.3 conditional task: gold is skipped when this is 0.
+    metrics["rows_changed"] = str(rows_changed)
 
     return metrics

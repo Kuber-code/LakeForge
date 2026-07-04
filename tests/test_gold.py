@@ -129,6 +129,25 @@ def test_agg_delivery_sla(spark):
     assert "DPD" not in agg  # undelivered rows don't count against SLA
 
 
+def test_agg_distributor_shipments(spark):
+    from lakeforge.transform.gold import build_agg_distributor_shipments
+
+    shipments = spark.createDataFrame(
+        [
+            (1, 10, "BeerLine", date(2026, 6, 12), 40, "WAW-1"),
+            (2, 11, "BeerLine", date(2026, 6, 12), 20, "POZ-1"),
+            (3, 12, "HopTrans", date(2026, 6, 12), 10, "WAW-1"),
+        ],
+        "shipment_id INT, order_id INT, distributor STRING, ship_date DATE, "
+        "qty_cases INT, warehouse STRING",
+    )
+    agg = {r["distributor"]: r for r in build_agg_distributor_shipments(shipments).collect()}
+    assert agg["BeerLine"]["shipments"] == 2
+    assert agg["BeerLine"]["cases_shipped"] == 60
+    assert agg["BeerLine"]["warehouses_used"] == 2
+    assert agg["HopTrans"]["cases_shipped"] == 10
+
+
 def test_run_gold_writes_all_tables(spark, cfg, dim_customer, dim_product):
     """run_gold overwrites deterministically: same silver in, same gold out."""
     from lakeforge.transform.gold import run_gold

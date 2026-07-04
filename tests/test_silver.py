@@ -270,8 +270,11 @@ def test_run_silver_end_to_end(spark, cfg):
     assert spark.table(cfg.table("silver", "orders")).count() == 1
     assert dict(spark.table(cfg.table("silver", "shipments")).dtypes)["qty_cases"] == "int"
     assert metrics["orders_ref_violations"] == "0"
+    assert int(metrics["rows_changed"]) > 0
 
-    # Re-run over identical bronze: nothing changes anywhere (FR-4.6).
-    run_silver(spark, cfg)
+    # Re-run over identical bronze: nothing changes anywhere (FR-4.6), and
+    # the FR-5.3 signal reports exactly 0 changed rows.
+    rerun = run_silver(spark, cfg)
+    assert rerun["rows_changed"] == "0"
     assert spark.table(cfg.table("silver", "customers")).count() == 1
     assert spark.table(cfg.table("silver", "orders")).count() == 1

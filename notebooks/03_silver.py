@@ -26,3 +26,6 @@ started = datetime.now(UTC)
 metrics = run_silver(spark, cfg)
 log_run(spark, cfg, task="silver", status="succeeded", started_at=started, metrics=metrics)
 print(metrics)
+
+# FR-5.3 — the job's conditional task reads this to skip gold when nothing changed.
+dbutils.jobs.taskValues.set("rows_changed", int(metrics["rows_changed"]))

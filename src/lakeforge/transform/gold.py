@@ -163,6 +163,20 @@ def build_agg_delivery_sla(deliveries: DataFrame) -> DataFrame:
     )
 
 
+def build_agg_distributor_shipments(shipments: DataFrame) -> DataFrame:
+    """FR-8.1 feed from the file-based source: distributor volume by day.
+
+    This is the gold table fed by the distributor drops (FR-4.1), so the star
+    schema side of gold comes from Azure SQL and this one from files — the P2
+    exit criterion's "both sources".
+    """
+    return shipments.groupBy("ship_date", "distributor").agg(
+        F.count("*").alias("shipments"),
+        F.sum("qty_cases").alias("cases_shipped"),
+        F.countDistinct("warehouse").alias("warehouses_used"),
+    )
+
+
 def run_gold(spark: SparkSession, cfg: LakeforgeConfig) -> dict[str, str]:
     """Silver -> gold full rebuild; returns metrics for ops logging."""
     silver = lambda name: spark.table(cfg.table("silver", name))  # noqa: E731
@@ -184,6 +198,8 @@ def run_gold(spark: SparkSession, cfg: LakeforgeConfig) -> dict[str, str]:
         "agg_daily_revenue": agg_revenue,
         "agg_delivery_sla": agg_sla,
     }
+    if spark.catalog.tableExists(cfg.table("silver", "shipments")):
+        outputs["agg_distributor_shipments"] = build_agg_distributor_shipments(silver("shipments"))
     metrics: dict[str, str] = {}
     for name, df in outputs.items():
         target = cfg.table("gold", name)
