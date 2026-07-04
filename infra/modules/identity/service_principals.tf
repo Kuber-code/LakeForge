@@ -120,6 +120,16 @@ resource "azuread_application_federated_identity_credential" "deploy" {
   subject        = each.value.subject
 }
 
+# The one Azure role this SP holds: Reader on the RG, and only because the
+# Azure DevOps AzureCLI task must run `az account set` after the federated
+# login — a subscription is invisible to a principal with no role in it.
+# Reader cannot read Key Vault secrets or modify anything (P3, FR-6.5).
+resource "azurerm_role_assignment" "deploy_reader" {
+  scope                = var.resource_group_id
+  role_definition_name = "Reader"
+  principal_id         = azuread_service_principal.deploy.object_id
+}
+
 # ── FR-2.5 (negative test): sp-lakeforge-analyst ───────────────────────────
 # Member of lf_analysts (SELECT on gold only). Exists to prove the grants
 # matrix by *failing* to read silver. Client secret is unavoidable here (it
