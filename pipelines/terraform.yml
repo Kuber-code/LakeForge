@@ -58,10 +58,12 @@ stages:
                 # Key Vault, and refreshing azurerm_key_vault_secret reads the
                 # data plane. Changes touching KV secrets are applied from a
                 # trusted network instead (documented limitation of FR-1.8).
-                terraform -chdir=infra/core plan -input=false -refresh=false -out=core.tfplan
+                # pipeline.tfvars lives only in Azure Repos (gitignored on the
+                # public mirror), mirroring the local gitignored tfvars.
+                terraform -chdir=infra/core plan -input=false -refresh=false -var-file=pipeline.tfvars -out=core.tfplan
                 terraform -chdir=infra/workspace init -backend-config=../backend.hcl -input=false
                 terraform -chdir=infra/workspace validate
-                terraform -chdir=infra/workspace plan -input=false -refresh=false -out=workspace.tfplan
+                terraform -chdir=infra/workspace plan -input=false -refresh=false -var-file=pipeline.tfvars -out=workspace.tfplan
           - publish: infra
             artifact: tfplans
 
