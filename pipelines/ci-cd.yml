@@ -1,0 +1,142 @@
+# FR-6.2 — multi-stage CI/CD for the Databricks Asset Bundle.
+#
+# Stages: CI (lint + unit tests + bundle validate)
+#         -> DeployDev (bundle deploy -t dev + smoke run + integration assert)
+#         -> DeployProd (approval-gated via the 'lakeforge-prod' environment)
+#
+# Auth (FR-6.5): the 'lakeforge-azure' service connection uses workload
+# identity federation to sp-lakeforge-infra / sp-lakeforge-deploy — no client
+# secrets anywhere in DevOps (NFR-1). The Databricks CLI inherits the Azure
+# CLI login inside AzureCLI@2 (DATABRICKS_AUTH_TYPE=azure-cli).
+#
+# Variable group 'lakeforge' (non-secret): DATABRICKS_HOST, WAREHOUSE_ID.
+
+trigger:
+  branches:
+    include: [main]
+
+pr:
+  branches:
+    include: [main]
+
+variables:
+  - group: lakeforge
+  - name: pythonVersion
+    value: "3.12"
+
+stages:
+  - stage: CI
+    displayName: Lint, test, validate
+    jobs:
+      - job: ci
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(pythonVersion)
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -e ".[dev]"
+            displayName: Install package + dev deps
+
+          - script: ruff check src tests notebooks scripts && ruff format --check src tests
+            displayName: ruff
+
+          - script: |
+              export JAVA_HOME=$JAVA_HOME_17_X64
+              pytest tests/ -q --junitxml=test-results.xml
+            displayName: pytest (local Spark)
+
+          - task: PublishTestResults@2
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFiles: test-results.xml
+
+          - script: curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+            displayName: Install Databricks CLI
+
+          - task: AzureCLI@2
+            displayName: bundle validate
+            inputs:
+              azureSubscription: lakeforge-azure
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                export DATABRICKS_AUTH_TYPE=azure-cli
+                export DATABRICKS_HOST=$(DATABRICKS_HOST)
+                databricks bundle validate -t dev
+
+  - stage: DeployDev
+    displayName: Deploy dev + integration test
+    dependsOn: CI
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: deploy_dev
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - script: curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+            displayName: Install Databricks CLI
+
+          - task: AzureCLI@2
+            displayName: bundle deploy -t dev + smoke run
+            inputs:
+              azureSubscription: lakeforge-azure
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                export DATABRICKS_AUTH_TYPE=azure-cli
+                export DATABRICKS_HOST=$(DATABRICKS_HOST)
+                databricks bundle deploy -t dev
+                databricks bundle run lakeforge_medallion -t dev
+
+          - task: AzureCLI@2
+            displayName: "Integration assert: gold row count > 0"
+            inputs:
+              azureSubscription: lakeforge-azure
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                export DATABRICKS_AUTH_TYPE=azure-cli
+                export DATABRICKS_HOST=$(DATABRICKS_HOST)
+                COUNT=$(databricks api post /api/2.0/sql/statements --json '{
+                  "warehouse_id": "$(WAREHOUSE_ID)",
+                  "statement": "SELECT count(*) AS n FROM lakeforge_dev.gold.fact_sales",
+                  "wait_timeout": "50s"
+                }' | python3 -c "import json,sys; print(json.load(sys.stdin)['result']['data_array'][0][0])")
+                echo "gold.fact_sales rows: $COUNT"
+                test "$COUNT" -gt 0
+
+  - stage: DeployProd
+    displayName: Deploy prod (approval gate)
+    dependsOn: DeployDev
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: deploy_prod
+        # FR-6.2 gate: the 'lakeforge-prod' environment carries a manual
+        # approval check configured in Azure DevOps.
+        environment: lakeforge-prod
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - script: curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+                  displayName: Install Databricks CLI
+                - task: AzureCLI@2
+                  displayName: bundle deploy -t prod
+                  inputs:
+                    azureSubscription: lakeforge-azure
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+                      export DATABRICKS_AUTH_TYPE=azure-cli
+                      export DATABRICKS_HOST=$(DATABRICKS_HOST)
+                      databricks bundle deploy -t prod

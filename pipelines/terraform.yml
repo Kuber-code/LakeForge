@@ -1,0 +1,88 @@
+# FR-6.3 — Terraform gets its own pipeline: plan on PR, apply on main after
+# a manual approval (the 'lakeforge-infra' environment check).
+#
+# Auth (FR-6.5): 'lakeforge-azure' service connection = workload identity
+# federation to sp-lakeforge-infra (Contributor on the RG). No secrets in
+# pipeline variables; ARM_* values come from the service connection.
+
+trigger:
+  branches:
+    include: [main]
+  paths:
+    include: [infra/**]
+
+pr:
+  branches:
+    include: [main]
+  paths:
+    include: [infra/**]
+
+variables:
+  - group: lakeforge
+
+stages:
+  - stage: Plan
+    displayName: fmt, validate, plan
+    jobs:
+      - job: plan
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: AzureCLI@2
+            displayName: terraform plan (core + workspace)
+            inputs:
+              azureSubscription: lakeforge-azure
+              scriptType: bash
+              scriptLocation: inlineScript
+              addSpnToEnvironment: true
+              inlineScript: |
+                set -euo pipefail
+                export ARM_USE_OIDC=true
+                export ARM_CLIENT_ID=$servicePrincipalId
+                export ARM_OIDC_TOKEN=$idToken
+                export ARM_TENANT_ID=$tenantId
+                export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+                terraform -chdir=infra/core fmt -check -recursive
+                terraform -chdir=infra/core init -backend-config=../backend.hcl -input=false
+                terraform -chdir=infra/core validate
+                terraform -chdir=infra/core plan -input=false -out=core.tfplan
+                terraform -chdir=infra/workspace init -backend-config=../backend.hcl -input=false
+                terraform -chdir=infra/workspace validate
+                terraform -chdir=infra/workspace plan -input=false -out=workspace.tfplan
+          - publish: infra
+            artifact: tfplans
+
+  - stage: Apply
+    displayName: apply (approval gate)
+    dependsOn: Plan
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: apply
+        environment: lakeforge-infra
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - download: current
+                  artifact: tfplans
+                - task: AzureCLI@2
+                  displayName: terraform apply saved plans
+                  inputs:
+                    azureSubscription: lakeforge-azure
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    addSpnToEnvironment: true
+                    inlineScript: |
+                      set -euo pipefail
+                      export ARM_USE_OIDC=true
+                      export ARM_CLIENT_ID=$servicePrincipalId
+                      export ARM_OIDC_TOKEN=$idToken
+                      export ARM_TENANT_ID=$tenantId
+                      export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+                      terraform -chdir=infra/core init -backend-config=../backend.hcl -input=false
+                      terraform -chdir=infra/core apply -input=false "$(Pipeline.Workspace)/tfplans/core/core.tfplan"
+                      terraform -chdir=infra/workspace init -backend-config=../backend.hcl -input=false
+                      terraform -chdir=infra/workspace apply -input=false "$(Pipeline.Workspace)/tfplans/workspace/workspace.tfplan"
