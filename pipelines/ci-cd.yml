@@ -4,10 +4,12 @@
 #         -> DeployDev (bundle deploy -t dev + smoke run + integration assert)
 #         -> DeployProd (approval-gated via the 'lakeforge-prod' environment)
 #
-# Auth (FR-6.5): the 'lakeforge-azure' service connection uses workload
-# identity federation to sp-lakeforge-infra / sp-lakeforge-deploy — no client
-# secrets anywhere in DevOps (NFR-1). The Databricks CLI inherits the Azure
-# CLI login inside AzureCLI@2 (DATABRICKS_AUTH_TYPE=azure-cli).
+# Auth (FR-6.5): the 'lakeforge-databricks' service connection federates
+# (workload identity, no client secrets — NFR-1) to sp-lakeforge-deploy, the
+# SP with zero Azure RBAC that owns bundle deploys and prod run_as (FR-2.2).
+# Terraform uses the separate 'lakeforge-azure' connection (sp-lakeforge-infra)
+# in terraform.yml. The Databricks CLI inherits the Azure CLI login inside
+# AzureCLI@2 (DATABRICKS_AUTH_TYPE=azure-cli).
 #
 # Variable group 'lakeforge' (non-secret): DATABRICKS_HOST, WAREHOUSE_ID.
 
@@ -60,7 +62,7 @@ stages:
           - task: AzureCLI@2
             displayName: bundle validate
             inputs:
-              azureSubscription: lakeforge-azure
+              azureSubscription: lakeforge-databricks
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
@@ -83,7 +85,7 @@ stages:
           - task: AzureCLI@2
             displayName: bundle deploy -t dev + smoke run
             inputs:
-              azureSubscription: lakeforge-azure
+              azureSubscription: lakeforge-databricks
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
@@ -96,7 +98,7 @@ stages:
           - task: AzureCLI@2
             displayName: "Integration assert: gold row count > 0"
             inputs:
-              azureSubscription: lakeforge-azure
+              azureSubscription: lakeforge-databricks
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
@@ -132,7 +134,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: bundle deploy -t prod
                   inputs:
-                    azureSubscription: lakeforge-azure
+                    azureSubscription: lakeforge-databricks
                     scriptType: bash
                     scriptLocation: inlineScript
                     inlineScript: |

@@ -12,6 +12,7 @@ Every identity in LakeForge, why it exists, what it can touch, and how its crede
 | `lf_engineers` (group) | Account-level Databricks group | ALL on `lakeforge_dev`; read-only on `lakeforge_prod`; READ on secret scope; R/W on external locations | Humans building pipelines | n/a (grouping only) |
 | `lf_analysts` (group) | Account-level Databricks group | SELECT on `gold` schemas only | Consumers of star-schema outputs; the least-privileged tier | n/a |
 | `lf_jobs` (group) | Account-level Databricks group | ALL on `lakeforge_prod`; READ on secret scope | Owns prod pipelines from P3; contains only `sp-lakeforge-deploy` | n/a |
+| `AzureDatabricks` (first-party app `2ff814a6-3304-4ab8-85cb-cd0e6f879c1d`) | Microsoft-owned Entra application | **Key Vault Secrets User** on `kv-lakeforge-dev-*` only | The KV-backed secret scope (FR-2.4) is read by the Databricks control plane under this identity; in RBAC mode it needs an explicit data-plane role (found empirically in P2: without it `dbutils.secrets.get` → PERMISSION_DENIED). Reaches the closed KV via the `AzureServices` network bypass | Microsoft-managed; nothing to store or rotate |
 
 ## Why managed identity beats SP + secret for storage access (FR-2.3)
 

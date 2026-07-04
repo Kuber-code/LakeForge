@@ -101,6 +101,21 @@ gates) on a local Delta-enabled SparkSession — no Azure required. On Windows,
 local Spark needs Hadoop `winutils`; the simplest route is running pytest under
 WSL (any distro with Python 3.11+ and a JDK).
 
+## Git strategy (FR-6.4)
+
+Trunk-based development: `main` is the only long-lived branch and is always
+deployable. Work happens on short-lived branches (`feat/...`, `fix/...`)
+merged to `main` via pull request; the branch policy requires the CI stage of
+[pipelines/ci-cd.yml](pipelines/ci-cd.yml) (ruff + pytest + `bundle validate`)
+to pass before merge. Merging to `main` triggers deploy to dev; prod deploys
+sit behind a manual approval on the `lakeforge-prod` environment. Terraform
+changes ride their own pipeline ([pipelines/terraform.yml](pipelines/terraform.yml)):
+plan on PR, approval-gated apply on `main`. Conventional Commits throughout,
+one commit per functional requirement where practical.
+
+See [docs/azure-devops-setup.md](docs/azure-devops-setup.md) for the one-time
+Azure DevOps wiring (org, WIF service connections, environments, policies).
+
 ## Cost notes
 
 Target burn ≤ 300 PLN (~70 EUR)/month. Main fixed cost: 3 private endpoints (~35 PLN/mo each). Everything else is on-demand: serverless Azure SQL auto-pauses after 60 min, job clusters use spot + autotermination. An Azure budget with 50/80/100% alerts is part of the Terraform stack. `terraform destroy` leaves nothing billable.
