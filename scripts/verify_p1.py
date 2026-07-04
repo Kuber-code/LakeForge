@@ -42,7 +42,10 @@ def record(name: str, ok: bool, detail: str = "") -> None:
 def kv_secret(vault: str, name: str) -> str:
     out = subprocess.run(
         ["az", "keyvault", "secret", "show", "--vault-name", vault, "--name", name, "-o", "json"],
-        capture_output=True, text=True, check=True, shell=sys.platform == "win32",
+        capture_output=True,
+        text=True,
+        check=True,
+        shell=sys.platform == "win32",
     )
     return json.loads(out.stdout)["value"]
 
@@ -50,7 +53,10 @@ def kv_secret(vault: str, name: str) -> str:
 def az_tenant() -> str:
     out = subprocess.run(
         ["az", "account", "show", "-o", "json"],
-        capture_output=True, text=True, check=True, shell=sys.platform == "win32",
+        capture_output=True,
+        text=True,
+        check=True,
+        shell=sys.platform == "win32",
     )
     return json.loads(out.stdout)["tenantId"]
 
@@ -66,7 +72,9 @@ def check_cluster_reads_adls(w: WorkspaceClient, cluster_id: str) -> None:
     w.files.upload(VOLUME_PATH, io.BytesIO(b"id,msg\n1,lakeforge-p1\n"), overwrite=True)
 
     ensure_cluster_running(w, cluster_id)
-    ctx = w.command_execution.create_and_wait(cluster_id=cluster_id, language=compute.Language.PYTHON)
+    ctx = w.command_execution.create_and_wait(
+        cluster_id=cluster_id, language=compute.Language.PYTHON
+    )
     try:
         cmd = w.command_execution.execute_and_wait(
             cluster_id=cluster_id,
@@ -78,7 +86,11 @@ def check_cluster_reads_adls(w: WorkspaceClient, cluster_id: str) -> None:
             ),
         )
         out = (cmd.results and cmd.results.data) or ""
-        ok = cmd.status == compute.CommandStatus.FINISHED and "ROWS=1" in str(out) and "lakeforge-p1" in str(out)
+        ok = (
+            cmd.status == compute.CommandStatus.FINISHED
+            and "ROWS=1" in str(out)
+            and "lakeforge-p1" in str(out)
+        )
         record("cluster reads ADLS via Access Connector (UC volume)", ok, str(out).strip()[:120])
     finally:
         w.command_execution.destroy(cluster_id=cluster_id, context_id=ctx.id)
@@ -89,7 +101,10 @@ def run_sql(w: WorkspaceClient, warehouse_id: str, statement: str) -> sql.Statem
         statement=statement, warehouse_id=warehouse_id, catalog=CATALOG, wait_timeout="50s"
     )
     # serverless warm-up may exceed wait_timeout
-    while resp.status and resp.status.state in (sql.StatementState.PENDING, sql.StatementState.RUNNING):
+    while resp.status and resp.status.state in (
+        sql.StatementState.PENDING,
+        sql.StatementState.RUNNING,
+    ):
         time.sleep(3)
         resp = w.statement_execution.get_statement(resp.statement_id)
     return resp
@@ -98,8 +113,9 @@ def run_sql(w: WorkspaceClient, warehouse_id: str, statement: str) -> sql.Statem
 def check_grants(w_me: WorkspaceClient, host: str, warehouse_id: str, key_vault: str) -> None:
     me_user = w_me.current_user.me().user_name
     for stmt in (
-        "CREATE TABLE IF NOT EXISTS silver.p1_smoke_silver AS SELECT 1 AS id, 'secret-ish' AS payload",
-        "CREATE TABLE IF NOT EXISTS gold.p1_smoke_gold  AS SELECT 1 AS id, 'public-ish' AS payload",
+        "CREATE TABLE IF NOT EXISTS silver.p1_smoke_silver"
+        " AS SELECT 1 AS id, 'secret-ish' AS payload",
+        "CREATE TABLE IF NOT EXISTS gold.p1_smoke_gold AS SELECT 1 AS id, 'public-ish' AS payload",
     ):
         resp = run_sql(w_me, warehouse_id, stmt)
         if resp.status.state != sql.StatementState.SUCCEEDED:
@@ -116,7 +132,9 @@ def check_grants(w_me: WorkspaceClient, host: str, warehouse_id: str, key_vault:
         azure_client_secret=kv_secret(key_vault, "sp-analyst-client-secret"),
         azure_tenant_id=az_tenant(),
     )
-    assert analyst.current_user.me().user_name != me_user, "analyst client resolved to the engineer identity"
+    assert analyst.current_user.me().user_name != me_user, (
+        "analyst client resolved to the engineer identity"
+    )
 
     resp = run_sql(analyst, warehouse_id, "SELECT * FROM gold.p1_smoke_gold")
     record(
@@ -139,8 +157,14 @@ def main() -> None:
     p.add_argument("--cluster-id", required=True)
     p.add_argument("--warehouse-id", required=True)
     p.add_argument("--key-vault", required=True)
-    p.add_argument("--cluster-only", action="store_true",
-                   help="post-flip re-check: KV is private, so grant tests (which read KV from this machine) are skipped")
+    p.add_argument(
+        "--cluster-only",
+        action="store_true",
+        help=(
+            "post-flip re-check: KV is private, so grant tests"
+            " (which read KV from this machine) are skipped"
+        ),
+    )
     args = p.parse_args()
 
     me = WorkspaceClient(host=args.host, auth_type="azure-cli")
