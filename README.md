@@ -127,8 +127,8 @@ Target burn ≤ 300 PLN (~70 EUR)/month. Main fixed cost: 3 private endpoints (~
 | Phase | Scope | Status |
 |---|---|---|
 | P1 — Foundations (infra + identity) | E1, E2, E3 | ✅ done — exit criteria verified 2026-07-04 (`scripts/verify_p1.py`: cluster reads ADLS via the Access Connector through private endpoints; analyst SP denied on silver, allowed on gold) |
-| P2 — Data platform | E4 | ⬜ |
-| P3 — Orchestration + CI/CD | E5, E6 | ⬜ |
+| P2 — Data platform | E4 | ✅ done — exit criteria verified 2026-07-04 (`scripts/run_p2_e2e.py`: gold star schema fed from Azure SQL *and* distributor files; SCD2 proven with a changed customer — old version closed, new current) |
+| P3 — Orchestration + CI/CD | E5, E6 | 🔶 in progress — DAB bundle deployed (medallion multi-task job with conditional gold skip); Azure DevOps YAML authored, awaiting a DevOps org + WIF service connection to go live |
 | P4 — Performance lab + dashboards | E7, E8, E9 | ⬜ |
 
 Known deferral from P1: Unity Catalog **account-level groups** (`lf_*`) are coded but applied in fallback mode (grants target the SPs directly) until a Databricks account-admin credential is available — the account REST API rejects personal Microsoft accounts. Flip `enable_account_groups = true` and re-apply to converge; see [identity matrix](docs/identity-matrix.md).
