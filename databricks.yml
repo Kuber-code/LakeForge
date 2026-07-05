@@ -27,6 +27,9 @@ variables:
   deploy_sp_application_id:
     description: sp-lakeforge-deploy application id — prod run_as (FR-2.2).
     default: 01e809d3-c4ad-43a2-8896-fa9be16a71a6
+  warehouse_id:
+    description: SQL warehouse backing the Lakeview dashboards (FR-8.1..8.3).
+    default: 25e5ba038b3f5267
 
 targets:
   dev:

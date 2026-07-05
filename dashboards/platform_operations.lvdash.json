@@ -1,0 +1,246 @@
+{
+  "datasets": [
+    {
+      "name": "ds_job_runs",
+      "displayName": "Job run history (30 days)",
+      "queryLines": [
+        "WITH job_names AS (\n",
+        "  SELECT job_id, name FROM system.lakeflow.jobs\n",
+        "  WHERE workspace_id = 7405607941001785\n",
+        "  QUALIFY row_number() OVER (PARTITION BY job_id ORDER BY change_time DESC) = 1\n",
+        ")\n",
+        "SELECT t.run_id, n.name AS job_name, t.result_state, t.trigger_type,\n",
+        "       t.period_start_time, t.period_end_time,\n",
+        "       timestampdiff(SECOND, t.period_start_time, t.period_end_time) / 60.0 AS duration_min\n",
+        "FROM system.lakeflow.job_run_timeline t\n",
+        "JOIN job_names n USING (job_id)\n",
+        "WHERE t.workspace_id = 7405607941001785\n",
+        "  AND t.result_state IS NOT NULL\n",
+        "  AND t.period_start_time >= date_add(current_date(), -30)\n",
+        "ORDER BY t.period_start_time DESC\n"
+      ]
+    },
+    {
+      "name": "ds_duration_trend",
+      "displayName": "Run duration trend",
+      "queryLines": [
+        "WITH job_names AS (\n",
+        "  SELECT job_id, name FROM system.lakeflow.jobs\n",
+        "  WHERE workspace_id = 7405607941001785\n",
+        "  QUALIFY row_number() OVER (PARTITION BY job_id ORDER BY change_time DESC) = 1\n",
+        ")\n",
+        "SELECT date(t.period_start_time) AS run_date, n.name AS job_name,\n",
+        "       avg(timestampdiff(SECOND, t.period_start_time, t.period_end_time)) / 60.0 AS avg_duration_min\n",
+        "FROM system.lakeflow.job_run_timeline t\n",
+        "JOIN job_names n USING (job_id)\n",
+        "WHERE t.workspace_id = 7405607941001785 AND t.result_state IS NOT NULL\n",
+        "  AND t.period_start_time >= date_add(current_date(), -30)\n",
+        "GROUP BY run_date, job_name ORDER BY run_date\n"
+      ]
+    },
+    {
+      "name": "ds_freshness",
+      "displayName": "Data freshness per task",
+      "queryLines": [
+        "SELECT task, max(finished_at) AS last_success,\n",
+        "       timestampdiff(HOUR, max(finished_at), current_timestamp()) AS hours_since\n",
+        "FROM lakeforge_prod.ops.pipeline_runs\n",
+        "WHERE status = 'succeeded'\n",
+        "GROUP BY task ORDER BY hours_since DESC\n"
+      ]
+    },
+    {
+      "name": "ds_rows_per_run",
+      "displayName": "Rows processed per run",
+      "queryLines": [
+        "SELECT started_at, task,\n",
+        "       cast(coalesce(element_at(metrics, 'rows_changed'), element_at(metrics, 'rows')) AS BIGINT) AS rows_processed\n",
+        "FROM lakeforge_prod.ops.pipeline_runs\n",
+        "WHERE status = 'succeeded'\n",
+        "  AND (element_at(metrics, 'rows_changed') IS NOT NULL OR element_at(metrics, 'rows') IS NOT NULL)\n",
+        "  AND started_at >= date_add(current_date(), -30)\n",
+        "ORDER BY started_at\n"
+      ]
+    },
+    {
+      "name": "ds_failures",
+      "displayName": "Failure log",
+      "queryLines": [
+        "SELECT started_at, task, status, message\n",
+        "FROM lakeforge_prod.ops.pipeline_runs\n",
+        "WHERE status <> 'succeeded'\n",
+        "ORDER BY started_at DESC LIMIT 50\n"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "page_ops",
+      "displayName": "Platform Operations",
+      "layout": [
+        {
+          "widget": {
+            "name": "table_freshness",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_freshness",
+                  "fields": [
+                    {"name": "task", "expression": "`task`"},
+                    {"name": "last_success", "expression": "`last_success`"},
+                    {"name": "hours_since", "expression": "`hours_since`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {"fieldName": "task", "displayName": "Task"},
+                  {"fieldName": "last_success", "displayName": "Last success"},
+                  {"fieldName": "hours_since", "displayName": "Hours since"}
+                ]
+              },
+              "frame": {"showTitle": true, "title": "Freshness — hours since last successful run per task"}
+            }
+          },
+          "position": {"x": 0, "y": 0, "width": 3, "height": 8}
+        },
+        {
+          "widget": {
+            "name": "chart_duration_trend",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_duration_trend",
+                  "fields": [
+                    {"name": "run_date", "expression": "`run_date`"},
+                    {"name": "job_name", "expression": "`job_name`"},
+                    {"name": "avg_duration_min", "expression": "`avg_duration_min`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {"fieldName": "run_date", "scale": {"type": "temporal"}, "displayName": "Date"},
+                "y": {"fieldName": "avg_duration_min", "scale": {"type": "quantitative"}, "displayName": "Avg duration (min)"},
+                "color": {"fieldName": "job_name", "scale": {"type": "categorical"}, "displayName": "Job"}
+              },
+              "frame": {"showTitle": true, "title": "Job duration trend (system.lakeflow)"}
+            }
+          },
+          "position": {"x": 3, "y": 0, "width": 3, "height": 8}
+        },
+        {
+          "widget": {
+            "name": "chart_rows_per_run",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_rows_per_run",
+                  "fields": [
+                    {"name": "started_at", "expression": "`started_at`"},
+                    {"name": "task", "expression": "`task`"},
+                    {"name": "rows_processed", "expression": "`rows_processed`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {"fieldName": "started_at", "scale": {"type": "temporal"}, "displayName": "Run"},
+                "y": {"fieldName": "rows_processed", "scale": {"type": "quantitative"}, "displayName": "Rows"},
+                "color": {"fieldName": "task", "scale": {"type": "categorical"}, "displayName": "Task"}
+              },
+              "frame": {"showTitle": true, "title": "Rows ingested / changed per run"}
+            }
+          },
+          "position": {"x": 0, "y": 8, "width": 6, "height": 8}
+        },
+        {
+          "widget": {
+            "name": "table_job_runs",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_job_runs",
+                  "fields": [
+                    {"name": "period_start_time", "expression": "`period_start_time`"},
+                    {"name": "job_name", "expression": "`job_name`"},
+                    {"name": "result_state", "expression": "`result_state`"},
+                    {"name": "trigger_type", "expression": "`trigger_type`"},
+                    {"name": "duration_min", "expression": "`duration_min`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {"fieldName": "period_start_time", "displayName": "Started"},
+                  {"fieldName": "job_name", "displayName": "Job"},
+                  {"fieldName": "result_state", "displayName": "Result"},
+                  {"fieldName": "trigger_type", "displayName": "Trigger"},
+                  {"fieldName": "duration_min", "displayName": "Duration (min)"}
+                ]
+              },
+              "frame": {"showTitle": true, "title": "Run history — last 30 days"}
+            }
+          },
+          "position": {"x": 0, "y": 16, "width": 3, "height": 8}
+        },
+        {
+          "widget": {
+            "name": "table_failures",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_failures",
+                  "fields": [
+                    {"name": "started_at", "expression": "`started_at`"},
+                    {"name": "task", "expression": "`task`"},
+                    {"name": "status", "expression": "`status`"},
+                    {"name": "message", "expression": "`message`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {"fieldName": "started_at", "displayName": "Started"},
+                  {"fieldName": "task", "displayName": "Task"},
+                  {"fieldName": "status", "displayName": "Status"},
+                  {"fieldName": "message", "displayName": "Message"}
+                ]
+              },
+              "frame": {"showTitle": true, "title": "Failure log (ops.pipeline_runs)"}
+            }
+          },
+          "position": {"x": 3, "y": 16, "width": 3, "height": 8}
+        }
+      ]
+    }
+  ]
+}

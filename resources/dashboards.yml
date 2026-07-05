@@ -1,0 +1,24 @@
+# E8 — Lakeview dashboards as code (FR-8.1..8.3).
+#
+# All three are bound to the SQL warehouse. Business + operations read the
+# prod catalog and ops tables (private storage — they render once the
+# warehouse can reach it: NCC private endpoints or a classic warehouse after
+# a quota bump). The performance & cost dashboard reads ops.benchmarks (dev)
+# and system.billing, so its billing widgets work on serverless already.
+
+resources:
+  dashboards:
+    sales_distribution:
+      display_name: "LakeForge — Sales & Distribution"
+      file_path: ../dashboards/sales_distribution.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+
+    platform_operations:
+      display_name: "LakeForge — Platform Operations"
+      file_path: ../dashboards/platform_operations.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+
+    performance_cost:
+      display_name: "LakeForge — Performance & Cost"
+      file_path: ../dashboards/performance_cost.lvdash.json
+      warehouse_id: ${var.warehouse_id}

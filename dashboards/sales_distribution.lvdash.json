@@ -1,0 +1,315 @@
+{
+  "datasets": [
+    {
+      "name": "ds_revenue_kpi",
+      "displayName": "Revenue KPI (90 days)",
+      "queryLines": [
+        "SELECT sum(net_revenue) AS net_revenue, sum(units_sold) AS units_sold, sum(orders) AS orders\n",
+        "FROM lakeforge_prod.gold.agg_daily_revenue\n",
+        "WHERE order_date >= date_add(current_date(), -90)\n"
+      ]
+    },
+    {
+      "name": "ds_sla_kpi",
+      "displayName": "On-time rate KPI (30 days)",
+      "queryLines": [
+        "SELECT sum(on_time) / sum(deliveries) AS on_time_rate\n",
+        "FROM lakeforge_prod.gold.agg_delivery_sla\n",
+        "WHERE planned_date >= date_add(current_date(), -30)\n"
+      ]
+    },
+    {
+      "name": "ds_revenue_trend",
+      "displayName": "Daily revenue by brand",
+      "queryLines": [
+        "SELECT order_date, brand, sum(net_revenue) AS net_revenue\n",
+        "FROM lakeforge_prod.gold.agg_daily_revenue\n",
+        "WHERE order_date >= date_add(current_date(), -90)\n",
+        "GROUP BY order_date, brand ORDER BY order_date\n"
+      ]
+    },
+    {
+      "name": "ds_revenue_region",
+      "displayName": "Revenue by region (90 days)",
+      "queryLines": [
+        "SELECT region, sum(net_revenue) AS net_revenue, sum(units_sold) AS units_sold\n",
+        "FROM lakeforge_prod.gold.agg_daily_revenue\n",
+        "WHERE order_date >= date_add(current_date(), -90)\n",
+        "GROUP BY region ORDER BY net_revenue DESC\n"
+      ]
+    },
+    {
+      "name": "ds_top_distributors",
+      "displayName": "Top distributors by cases shipped",
+      "queryLines": [
+        "SELECT distributor, sum(cases_shipped) AS cases_shipped, sum(shipments) AS shipments\n",
+        "FROM lakeforge_prod.gold.agg_distributor_shipments\n",
+        "GROUP BY distributor ORDER BY cases_shipped DESC LIMIT 10\n"
+      ]
+    },
+    {
+      "name": "ds_sla_trend",
+      "displayName": "Delivery SLA by carrier",
+      "queryLines": [
+        "SELECT planned_date, carrier, sum(on_time) / sum(deliveries) AS on_time_rate\n",
+        "FROM lakeforge_prod.gold.agg_delivery_sla\n",
+        "WHERE planned_date >= date_add(current_date(), -90)\n",
+        "GROUP BY planned_date, carrier ORDER BY planned_date\n"
+      ]
+    },
+    {
+      "name": "ds_top_customers",
+      "displayName": "Top customers by net revenue",
+      "queryLines": [
+        "SELECT c.customer_name, c.region, sum(f.net_amount) AS net_revenue,\n",
+        "       count(DISTINCT f.order_id) AS orders\n",
+        "FROM lakeforge_prod.gold.fact_sales f\n",
+        "JOIN lakeforge_prod.gold.dim_customer c USING (customer_sk)\n",
+        "WHERE f.status <> 'cancelled'\n",
+        "GROUP BY c.customer_name, c.region ORDER BY net_revenue DESC LIMIT 10\n"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "page_sales",
+      "displayName": "Sales & Distribution",
+      "layout": [
+        {
+          "widget": {
+            "name": "kpi_revenue",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_revenue_kpi",
+                  "fields": [{"name": "net_revenue", "expression": "`net_revenue`"}],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "net_revenue",
+                  "format": {"type": "number-currency", "currencyCode": "PLN", "abbreviation": "compact", "decimalPlaces": {"type": "max", "places": 1}},
+                  "displayName": "Net revenue (90d)"
+                }
+              },
+              "frame": {"showTitle": true, "title": "Net revenue — last 90 days"}
+            }
+          },
+          "position": {"x": 0, "y": 0, "width": 2, "height": 5}
+        },
+        {
+          "widget": {
+            "name": "kpi_units",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_revenue_kpi",
+                  "fields": [{"name": "units_sold", "expression": "`units_sold`"}],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "units_sold",
+                  "format": {"type": "number-plain", "abbreviation": "compact", "decimalPlaces": {"type": "max", "places": 1}},
+                  "displayName": "Units sold (90d)"
+                }
+              },
+              "frame": {"showTitle": true, "title": "Units sold — last 90 days"}
+            }
+          },
+          "position": {"x": 2, "y": 0, "width": 2, "height": 5}
+        },
+        {
+          "widget": {
+            "name": "kpi_on_time",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_sla_kpi",
+                  "fields": [{"name": "on_time_rate", "expression": "`on_time_rate`"}],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "on_time_rate",
+                  "format": {"type": "number-percent", "decimalPlaces": {"type": "max", "places": 1}},
+                  "displayName": "On-time delivery (30d)"
+                }
+              },
+              "frame": {"showTitle": true, "title": "On-time delivery — last 30 days"}
+            }
+          },
+          "position": {"x": 4, "y": 0, "width": 2, "height": 5}
+        },
+        {
+          "widget": {
+            "name": "chart_revenue_trend",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_revenue_trend",
+                  "fields": [
+                    {"name": "order_date", "expression": "`order_date`"},
+                    {"name": "brand", "expression": "`brand`"},
+                    {"name": "net_revenue", "expression": "`net_revenue`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {"fieldName": "order_date", "scale": {"type": "temporal"}, "displayName": "Date"},
+                "y": {"fieldName": "net_revenue", "scale": {"type": "quantitative"}, "displayName": "Net revenue"},
+                "color": {"fieldName": "brand", "scale": {"type": "categorical"}, "displayName": "Brand"}
+              },
+              "frame": {"showTitle": true, "title": "Daily net revenue by brand"}
+            }
+          },
+          "position": {"x": 0, "y": 5, "width": 6, "height": 8}
+        },
+        {
+          "widget": {
+            "name": "chart_revenue_region",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_revenue_region",
+                  "fields": [
+                    {"name": "region", "expression": "`region`"},
+                    {"name": "net_revenue", "expression": "`net_revenue`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {"fieldName": "net_revenue", "scale": {"type": "quantitative"}, "displayName": "Net revenue"},
+                "y": {"fieldName": "region", "scale": {"type": "categorical"}, "displayName": "Region"}
+              },
+              "frame": {"showTitle": true, "title": "Revenue by region — last 90 days"}
+            }
+          },
+          "position": {"x": 0, "y": 13, "width": 3, "height": 8}
+        },
+        {
+          "widget": {
+            "name": "chart_top_distributors",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_top_distributors",
+                  "fields": [
+                    {"name": "distributor", "expression": "`distributor`"},
+                    {"name": "cases_shipped", "expression": "`cases_shipped`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {"fieldName": "cases_shipped", "scale": {"type": "quantitative"}, "displayName": "Cases shipped"},
+                "y": {"fieldName": "distributor", "scale": {"type": "categorical"}, "displayName": "Distributor"}
+              },
+              "frame": {"showTitle": true, "title": "Top distributors by cases shipped (files source)"}
+            }
+          },
+          "position": {"x": 3, "y": 13, "width": 3, "height": 8}
+        },
+        {
+          "widget": {
+            "name": "chart_sla_trend",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_sla_trend",
+                  "fields": [
+                    {"name": "planned_date", "expression": "`planned_date`"},
+                    {"name": "carrier", "expression": "`carrier`"},
+                    {"name": "on_time_rate", "expression": "`on_time_rate`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {"fieldName": "planned_date", "scale": {"type": "temporal"}, "displayName": "Planned date"},
+                "y": {"fieldName": "on_time_rate", "scale": {"type": "quantitative"}, "format": {"type": "number-percent", "decimalPlaces": {"type": "max", "places": 0}}, "displayName": "On-time rate"},
+                "color": {"fieldName": "carrier", "scale": {"type": "categorical"}, "displayName": "Carrier"}
+              },
+              "frame": {"showTitle": true, "title": "Delivery SLA trend by carrier"}
+            }
+          },
+          "position": {"x": 0, "y": 21, "width": 3, "height": 8}
+        },
+        {
+          "widget": {
+            "name": "table_top_customers",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_top_customers",
+                  "fields": [
+                    {"name": "customer_name", "expression": "`customer_name`"},
+                    {"name": "region", "expression": "`region`"},
+                    {"name": "net_revenue", "expression": "`net_revenue`"},
+                    {"name": "orders", "expression": "`orders`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {"fieldName": "customer_name", "displayName": "Customer"},
+                  {"fieldName": "region", "displayName": "Region"},
+                  {"fieldName": "net_revenue", "displayName": "Net revenue"},
+                  {"fieldName": "orders", "displayName": "Orders"}
+                ]
+              },
+              "frame": {"showTitle": true, "title": "Top 10 customers"}
+            }
+          },
+          "position": {"x": 3, "y": 21, "width": 3, "height": 8}
+        }
+      ]
+    }
+  ]
+}

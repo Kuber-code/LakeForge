@@ -1,0 +1,287 @@
+{
+  "datasets": [
+    {
+      "name": "ds_layout_bench",
+      "displayName": "Layout benchmark results",
+      "queryLines": [
+        "SELECT element_at(config, 'query') AS query,\n",
+        "       element_at(config, 'variant') AS variant,\n",
+        "       min(duration_ms) AS duration_ms\n",
+        "FROM lakeforge_dev.ops.benchmarks\n",
+        "WHERE category = 'layout' AND element_at(config, 'query') IS NOT NULL\n",
+        "GROUP BY query, variant ORDER BY query, variant\n"
+      ]
+    },
+    {
+      "name": "ds_cluster_bench",
+      "displayName": "Cluster benchmark results",
+      "queryLines": [
+        "SELECT element_at(config, 'workload') AS workload,\n",
+        "       element_at(config, 'variant') AS variant,\n",
+        "       min(duration_ms) AS duration_ms\n",
+        "FROM lakeforge_dev.ops.benchmarks\n",
+        "WHERE category = 'cluster'\n",
+        "GROUP BY workload, variant ORDER BY workload, variant\n"
+      ]
+    },
+    {
+      "name": "ds_query_bench",
+      "displayName": "Query rewrite before/after",
+      "queryLines": [
+        "SELECT element_at(config, 'case') AS rewrite_case,\n",
+        "       element_at(config, 'phase') AS phase,\n",
+        "       min(duration_ms) AS duration_ms\n",
+        "FROM lakeforge_dev.ops.benchmarks\n",
+        "WHERE category = 'query'\n",
+        "GROUP BY rewrite_case, phase ORDER BY rewrite_case, phase\n"
+      ]
+    },
+    {
+      "name": "ds_dbu_daily",
+      "displayName": "Daily DBU cost (project tag)",
+      "queryLines": [
+        "SELECT u.usage_date, u.sku_name,\n",
+        "       sum(u.usage_quantity) AS dbus,\n",
+        "       sum(u.usage_quantity * coalesce(p.pricing.default, 0)) AS usd\n",
+        "FROM system.billing.usage u\n",
+        "LEFT JOIN system.billing.list_prices p\n",
+        "  ON u.sku_name = p.sku_name AND u.cloud = p.cloud\n",
+        " AND u.usage_end_time >= p.price_start_time\n",
+        " AND (p.price_end_time IS NULL OR u.usage_end_time < p.price_end_time)\n",
+        "WHERE u.workspace_id = 7405607941001785\n",
+        "  AND u.usage_date >= date_add(current_date(), -30)\n",
+        "GROUP BY u.usage_date, u.sku_name ORDER BY u.usage_date\n"
+      ]
+    },
+    {
+      "name": "ds_cost_per_variant",
+      "displayName": "DBU cost per perf variant",
+      "queryLines": [
+        "SELECT u.custom_tags['perf_variant'] AS variant,\n",
+        "       sum(u.usage_quantity) AS dbus,\n",
+        "       sum(u.usage_quantity * coalesce(p.pricing.default, 0)) AS usd\n",
+        "FROM system.billing.usage u\n",
+        "LEFT JOIN system.billing.list_prices p\n",
+        "  ON u.sku_name = p.sku_name AND u.cloud = p.cloud\n",
+        " AND u.usage_end_time >= p.price_start_time\n",
+        " AND (p.price_end_time IS NULL OR u.usage_end_time < p.price_end_time)\n",
+        "WHERE u.workspace_id = 7405607941001785\n",
+        "  AND u.custom_tags['perf_variant'] IS NOT NULL\n",
+        "GROUP BY variant ORDER BY usd DESC\n"
+      ]
+    },
+    {
+      "name": "ds_cost_per_job_run",
+      "displayName": "DBU cost per job run",
+      "queryLines": [
+        "SELECT u.usage_metadata.job_id AS job_id,\n",
+        "       u.usage_metadata.job_run_id AS run_id,\n",
+        "       min(u.usage_start_time) AS started,\n",
+        "       sum(u.usage_quantity) AS dbus,\n",
+        "       sum(u.usage_quantity * coalesce(p.pricing.default, 0)) AS usd\n",
+        "FROM system.billing.usage u\n",
+        "LEFT JOIN system.billing.list_prices p\n",
+        "  ON u.sku_name = p.sku_name AND u.cloud = p.cloud\n",
+        " AND u.usage_end_time >= p.price_start_time\n",
+        " AND (p.price_end_time IS NULL OR u.usage_end_time < p.price_end_time)\n",
+        "WHERE u.workspace_id = 7405607941001785\n",
+        "  AND u.usage_metadata.job_id IS NOT NULL\n",
+        "  AND u.usage_date >= date_add(current_date(), -30)\n",
+        "GROUP BY job_id, run_id ORDER BY started DESC LIMIT 50\n"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "page_perf",
+      "displayName": "Performance & Cost",
+      "layout": [
+        {
+          "widget": {
+            "name": "chart_layout_bench",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_layout_bench",
+                  "fields": [
+                    {"name": "query", "expression": "`query`"},
+                    {"name": "variant", "expression": "`variant`"},
+                    {"name": "duration_ms", "expression": "`duration_ms`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {"fieldName": "query", "scale": {"type": "categorical"}, "displayName": "Query"},
+                "y": {"fieldName": "duration_ms", "scale": {"type": "quantitative"}, "displayName": "Median warm ms"},
+                "color": {"fieldName": "variant", "scale": {"type": "categorical"}, "displayName": "Layout"}
+              },
+              "frame": {"showTitle": true, "title": "FR-7.3 — layout variants: median warm duration per query"}
+            }
+          },
+          "position": {"x": 0, "y": 0, "width": 3, "height": 8}
+        },
+        {
+          "widget": {
+            "name": "chart_cluster_bench",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_cluster_bench",
+                  "fields": [
+                    {"name": "workload", "expression": "`workload`"},
+                    {"name": "variant", "expression": "`variant`"},
+                    {"name": "duration_ms", "expression": "`duration_ms`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {"fieldName": "workload", "scale": {"type": "categorical"}, "displayName": "Workload"},
+                "y": {"fieldName": "duration_ms", "scale": {"type": "quantitative"}, "displayName": "Median warm ms"},
+                "color": {"fieldName": "variant", "scale": {"type": "categorical"}, "displayName": "Cluster"}
+              },
+              "frame": {"showTitle": true, "title": "FR-7.2 — cluster variants: same workload, different silicon"}
+            }
+          },
+          "position": {"x": 3, "y": 0, "width": 3, "height": 8}
+        },
+        {
+          "widget": {
+            "name": "chart_query_bench",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_query_bench",
+                  "fields": [
+                    {"name": "rewrite_case", "expression": "`rewrite_case`"},
+                    {"name": "phase", "expression": "`phase`"},
+                    {"name": "duration_ms", "expression": "`duration_ms`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {"fieldName": "rewrite_case", "scale": {"type": "categorical"}, "displayName": "Case"},
+                "y": {"fieldName": "duration_ms", "scale": {"type": "quantitative"}, "displayName": "Median warm ms"},
+                "color": {"fieldName": "phase", "scale": {"type": "categorical"}, "displayName": "Phase"}
+              },
+              "frame": {"showTitle": true, "title": "FR-7.4 — bad query vs rewrite"}
+            }
+          },
+          "position": {"x": 0, "y": 8, "width": 3, "height": 8}
+        },
+        {
+          "widget": {
+            "name": "chart_dbu_daily",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_dbu_daily",
+                  "fields": [
+                    {"name": "usage_date", "expression": "`usage_date`"},
+                    {"name": "sku_name", "expression": "`sku_name`"},
+                    {"name": "usd", "expression": "`usd`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {"fieldName": "usage_date", "scale": {"type": "temporal"}, "displayName": "Date"},
+                "y": {"fieldName": "usd", "scale": {"type": "quantitative"}, "displayName": "USD"},
+                "color": {"fieldName": "sku_name", "scale": {"type": "categorical"}, "displayName": "SKU"}
+              },
+              "frame": {"showTitle": true, "title": "Daily DBU spend (system.billing.usage × list_prices)"}
+            }
+          },
+          "position": {"x": 3, "y": 8, "width": 3, "height": 8}
+        },
+        {
+          "widget": {
+            "name": "chart_cost_variant",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_cost_per_variant",
+                  "fields": [
+                    {"name": "variant", "expression": "`variant`"},
+                    {"name": "dbus", "expression": "`dbus`"},
+                    {"name": "usd", "expression": "`usd`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {"fieldName": "usd", "scale": {"type": "quantitative"}, "displayName": "USD"},
+                "y": {"fieldName": "variant", "scale": {"type": "categorical"}, "displayName": "Variant"}
+              },
+              "frame": {"showTitle": true, "title": "DBU cost per perf-lab cluster variant"}
+            }
+          },
+          "position": {"x": 0, "y": 16, "width": 3, "height": 8}
+        },
+        {
+          "widget": {
+            "name": "table_cost_per_run",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_cost_per_job_run",
+                  "fields": [
+                    {"name": "started", "expression": "`started`"},
+                    {"name": "job_id", "expression": "`job_id`"},
+                    {"name": "run_id", "expression": "`run_id`"},
+                    {"name": "dbus", "expression": "`dbus`"},
+                    {"name": "usd", "expression": "`usd`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {"fieldName": "started", "displayName": "Started"},
+                  {"fieldName": "job_id", "displayName": "Job"},
+                  {"fieldName": "run_id", "displayName": "Run"},
+                  {"fieldName": "dbus", "displayName": "DBUs"},
+                  {"fieldName": "usd", "displayName": "USD"}
+                ]
+              },
+              "frame": {"showTitle": true, "title": "Estimated cost per pipeline run"}
+            }
+          },
+          "position": {"x": 3, "y": 16, "width": 3, "height": 8}
+        }
+      ]
+    }
+  ]
+}
