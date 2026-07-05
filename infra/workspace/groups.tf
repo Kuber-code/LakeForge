@@ -106,6 +106,14 @@ resource "databricks_service_principal" "deploy_ws" {
   count          = local.groups_enabled ? 0 : 1
   application_id = local.core.deploy_sp_client_id
   display_name   = "sp-lakeforge-deploy"
+
+  # The workspace mirrors the Entra display name ("sp-lakeforge-dev-deploy"),
+  # so this attribute drifts forever — and "fixing" it makes the provider PUT
+  # the whole SCIM object, which wipes the entitlements below (took down the
+  # prod job on 2026-07-05). Never reconcile display names on Entra-backed SPs.
+  lifecycle {
+    ignore_changes = [display_name]
+  }
 }
 
 # The medallion job runs on job clusters defined in the bundle (FR-5.4);
@@ -125,6 +133,11 @@ resource "databricks_service_principal" "analyst_ws" {
   count          = local.groups_enabled ? 0 : 1
   application_id = local.core.analyst_sp_client_id
   display_name   = "sp-lakeforge-analyst"
+
+  # Same SCIM-PUT hazard as deploy_ws above.
+  lifecycle {
+    ignore_changes = [display_name]
+  }
 }
 
 # Principal names used by grants.tf / secret_scope.tf / sql_warehouse.tf.
