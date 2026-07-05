@@ -116,7 +116,11 @@ def test_bench_query_records_median_and_metrics(spark, cfg):
 def test_record_and_explain(spark, cfg):
     ensure_benchmarks_table(spark, cfg)
     bench_id = record(
-        spark, cfg, category="maintenance", name="unit_record", duration_ms=12,
+        spark,
+        cfg,
+        category="maintenance",
+        name="unit_record",
+        duration_ms=12,
         metrics={"files": 3},
     )
     stored = (
