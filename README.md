@@ -101,6 +101,22 @@ gates) on a local Delta-enabled SparkSession — no Azure required. On Windows,
 local Spark needs Hadoop `winutils`; the simplest route is running pytest under
 WSL (any distro with Python 3.11+ and a JDK).
 
+## Performance lab & dashboards (P4)
+
+The E7 lab benchmarks a 50M-row synthetic fact under five physical layouts
+(small files / OPTIMIZE / Z-ORDER / liquid clustering / over-partitioning),
+four cluster shapes (Photon on/off, scale-up vs scale-out), five bad-query
+rewrites, and Delta maintenance (VACUUM / time travel). Every measurement
+lands in `ops.benchmarks`; run it with `databricks bundle run perf_lab -t dev`.
+Headline numbers and analysis: [docs/performance-findings.md](docs/performance-findings.md).
+
+Three Lakeview dashboards deploy from [dashboards/](dashboards/) as part of
+the bundle (FR-8.1..8.3): *Sales & Distribution* (gold), *Platform
+Operations* (`ops` + `system.lakeflow`), *Performance & Cost*
+(`ops.benchmarks` + `system.billing`). A SQL alert
+([scripts/create_freshness_alert.py](scripts/create_freshness_alert.py))
+notifies when gold goes stale for >24h (FR-8.4).
+
 ## Git strategy (FR-6.4)
 
 Trunk-based development: `main` is the only long-lived branch and is always
@@ -135,6 +151,7 @@ Target burn ≤ 300 PLN (~70 EUR)/month. Main fixed cost: 3 private endpoints (~
 - [Requirements](docs/requirements.md)
 - [Identity matrix](docs/identity-matrix.md)
 - [Network design](docs/network-design.md)
+- [Performance findings](docs/performance-findings.md)
 - [ADRs](docs/adr/)
 
 ## Delivery phases
