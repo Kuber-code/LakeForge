@@ -174,14 +174,14 @@ The strongest interview differentiator. All experiments produce rows in `ops.ben
 
 ## 6. Phased delivery plan
 
-| Phase | Scope | Exit criteria |
-|---|---|---|
-| **P1 — Foundations (infra + identity)** | E1, E2, E3; workspace up, UC wired, identity matrix written | Cluster reads a file from ADLS through the Access Connector; analyst SP denied on silver |
-| **P2 — Data platform** | E4; medallion end-to-end run manually | Gold star schema populated from both sources; SCD2 verified with a changed customer record |
-| **P3 — Orchestration + CI/CD** | E5, E6 | Green Azure DevOps run deploys dev→prod with approval; scheduled job succeeds unattended |
-| **P4 — Performance lab + dashboards** | E7, E8, E9 | 3 dashboards live; performance findings doc with numbers; alert fires on stale data test |
+**All phases delivered and verified 2026-07-05.**
 
-Suggested rhythm: P1 is the hardest for an Azure newcomer — expect it to take as long as P2+P3 combined. Do P1 slowly and deliberately; it is exactly the JD's "Azure ecosystem" block.
+| Phase | Scope | Exit criteria | Status |
+|---|---|---|---|
+| **P1 — Foundations (infra + identity)** | E1, E2, E3; workspace up, UC wired, identity matrix written | Cluster reads a file from ADLS through the Access Connector; analyst SP denied on silver | ✅ verified (`scripts/verify_p1.py`) |
+| **P2 — Data platform** | E4; medallion end-to-end run manually | Gold star schema populated from both sources; SCD2 verified with a changed customer record | ✅ verified (`scripts/run_p2_e2e.py` 9/9 PASS; 36 pytest) |
+| **P3 — Orchestration + CI/CD** | E5, E6 | Green Azure DevOps run deploys dev→prod with approval; scheduled job succeeds unattended | ✅ verified (ci-cd dev→prod w/ approval; prod medallion run SUCCESS end-to-end) |
+| **P4 — Performance lab + dashboards** | E7, E8, E9 | 3 dashboards live; performance findings doc with numbers; alert fires on stale data test | ✅ verified (3 Lakeview dashboards render via NCC; `docs/performance-findings.md`; freshness alert proven 999h→0h) |
 
 ---
 

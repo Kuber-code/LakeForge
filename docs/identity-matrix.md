@@ -14,6 +14,13 @@ Every identity in LakeForge, why it exists, what it can touch, and how its crede
 | `lf_jobs` (group) | Account-level Databricks group | ALL on `lakeforge_prod`; READ on secret scope | Owns prod pipelines from P3; contains only `sp-lakeforge-deploy` | n/a |
 | `AzureDatabricks` (first-party app `2ff814a6-3304-4ab8-85cb-cd0e6f879c1d`) | Microsoft-owned Entra application | **Key Vault Secrets User** on `kv-lakeforge-dev-*` only | The KV-backed secret scope (FR-2.4) is read by the Databricks control plane under this identity; in RBAC mode it needs an explicit data-plane role (found empirically in P2: without it `dbutils.secrets.get` → PERMISSION_DENIED). Reaches the closed KV via the `AzureServices` network bypass | Microsoft-managed; nothing to store or rotate |
 
+### Deployed-state note (updated 2026-07-05)
+
+The table above is the **target** identity model. Two nuances of the live state:
+
+- **Account groups run in fallback mode.** The `lf_*` account groups are the target; while the infra SP was not yet an account admin, service principals were registered via the workspace SCIM API and UC grants target the SPs directly (`enable_account_groups = false`). The privilege *outcome* is identical; only the grouping differs. Converging to the group model is a one-flag change once the infra SP holds account admin.
+- **The account API now accepts the human's Entra token.** Earlier the Databricks account REST API rejected this tenant's MSA identity (the reason the infra SP carries a KV secret for account calls). As of 2026-07-05 an Entra access token for the `AzureDatabricks` app is accepted, so account-plane operations done directly as the human include: creating the serverless **NCC** private endpoints (P4 dashboards; see [ADR-0008](adr/0008-warehouse-serverless-vs-classic.md)) and taking **metastore ownership** to grant `system.*` schema access to the dashboards. These are live changes; codifying them in Terraform (account provider via the infra SP) is the documented convergence step.
+
 ## Why managed identity beats SP + secret for storage access (FR-2.3)
 
 The classic pattern (SP with a client secret in a Databricks secret scope, `fs.azure.account.oauth2...` cluster configs) has four structural problems:

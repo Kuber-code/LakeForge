@@ -4,6 +4,19 @@ An end-to-end Azure lakehouse platform: **VNet-injected Databricks** with secure
 
 > Companion project to [BrewQuality](https://github.com/Kuber-code/BrewQuality). BrewQuality answers *"How do I guarantee data quality on a lakehouse?"* — LakeForge answers *"How do I build the secure, governed, performant Azure platform that a lakehouse runs on?"*
 
+## Project status — complete ✅
+
+All four phases delivered and verified end-to-end (2026-07-05):
+
+| Phase | Delivered | Proof |
+|---|---|---|
+| **P1 — Foundations** | VNet-injected Databricks (NPIP), private endpoints for storage + Key Vault, SP/MI identity matrix with OIDC, Unity Catalog | `verify_p1.py`; analyst SP denied on `silver` (negative test) |
+| **P2 — Data platform** | Incremental Medallion (Auto Loader files + JDBC from Azure SQL → SCD2 silver → gold star schema), quality gates | `run_p2_e2e.py` 9/9 PASS; 36 pytest on local Spark; `fact_sales` = 15 103 from both sources |
+| **P3 — Orchestration + CI/CD** | DAB multi-task job (conditional gold skip), Azure DevOps CI→dev→**prod with approval**, WIF (zero secrets), gated Terraform pipeline | prod medallion job ran **unattended end-to-end** on the 05:00 cron path |
+| **P4 — Performance + dashboards** | Cluster/layout/query benchmark lab (50M rows), 3 Lakeview dashboards, freshness alert, 8 ADRs | `docs/performance-findings.md` with numbers; dashboards render on serverless via **NCC private endpoints** (storage stays private); alert proven 999h→0h |
+
+The security posture is intact throughout: storage + Key Vault are private-endpoint-only (public access denied), and even the serverless dashboard warehouse reaches the data over a Network Connectivity Config rather than any public opening. Full engineering narrative — including the production incidents fixed along the way — is in the ADRs and the git history.
+
 ## Architecture
 
 ```
