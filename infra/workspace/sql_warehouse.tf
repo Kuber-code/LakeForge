@@ -1,14 +1,16 @@
-# Small serverless SQL warehouse: used by the P1 grants verification (queries
-# executed as different principals), later by dashboards (P4). Serverless →
-# zero idle cost after auto-stop.
+# Small SQL warehouse: P1 grants verification (queries executed as different
+# principals), then the P4 dashboards. Serverless by default (zero idle cost
+# after auto-stop) but cannot reach private-endpoint storage without NCC; flip
+# var.warehouse_serverless to false for a VNet-resident classic warehouse once
+# the EDSv4 quota is raised (ADR-0008). auto_stop_mins minimum is 10.
 
 resource "databricks_sql_endpoint" "small" {
   name                      = "wh-lakeforge"
   cluster_size              = "2X-Small"
   min_num_clusters          = 1
   max_num_clusters          = 1
-  auto_stop_mins            = 5
-  enable_serverless_compute = true
+  auto_stop_mins            = 10
+  enable_serverless_compute = var.warehouse_serverless
   warehouse_type            = "PRO"
 
   depends_on = [databricks_metastore_assignment.this]

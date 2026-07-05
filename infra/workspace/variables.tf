@@ -62,3 +62,20 @@ variable "engineer_user_name" {
   type        = string
   default     = ""
 }
+
+variable "warehouse_serverless" {
+  description = <<-EOT
+    Dashboard SQL warehouse compute model (FR-8, ADR-0008).
+
+    true  (default): serverless — zero idle cost, but runs in the Databricks
+      account network and CANNOT reach the private-endpoint storage until NCC
+      private endpoints are configured (needs account-console access). Fine for
+      system.* tables; the gold/ops dashboards stay dark.
+    false: classic (PRO) — runs in the customer VNet like the job clusters, so
+      it reaches private storage and the dashboards render. A 2X-Small needs
+      **16 vCPU in the westeurope standardEDSv4Family** (measured: 2× E8ds_v4);
+      raise that quota via a portal ticket before flipping this to false.
+  EOT
+  type        = bool
+  default     = true
+}
