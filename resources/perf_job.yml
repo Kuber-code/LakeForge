@@ -1,0 +1,184 @@
+# E7 — performance lab job (FR-7.1..7.5).
+#
+# DAG (strictly sequential — the westeurope quota is 10 vCPU total, so two
+# clusters may never run at once; probe tasks retry to ride out the short
+# window where the previous cluster's VMs are still deallocating):
+#
+#   generate ─> layout_lab ─> query_lab ─> maintenance_lab
+#     ─> probe single_4c ─> single_4c_photon ─> two_node_8c ─> single_8c
+#
+# The four probe clusters are the FR-7.2 matrix: baseline, Photon on the same
+# silicon, scale-out (driver+1 worker) vs scale-up (one 8-core box) at equal
+# total vCPUs. Every cluster carries a `perf_variant` tag so DBU + VM cost per
+# variant can be joined from system.billing.usage afterwards.
+#
+# No schedule — the lab runs on demand (`databricks bundle run perf_lab`).
+
+resources:
+  jobs:
+    perf_lab:
+      name: lakeforge-perf-lab-${bundle.target}
+      timeout_seconds: 14400
+      max_concurrent_runs: 1
+
+      email_notifications:
+        on_failure:
+          - ${var.notification_email}
+
+      job_clusters:
+        # shared cluster for generation + the single-cluster labs
+        - job_cluster_key: lab
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: Standard_D8s_v3
+            num_workers: 0
+            spark_conf: &single_node_conf
+              spark.databricks.cluster.profile: singleNode
+              spark.master: local[*]
+            custom_tags:
+              ResourceClass: SingleNode
+              project: lakeforge
+              perf_variant: lab
+            data_security_mode: SINGLE_USER
+            azure_attributes: &spot
+              availability: SPOT_WITH_FALLBACK_AZURE
+              first_on_demand: 1
+              spot_bid_max_price: -1
+
+        - job_cluster_key: single_4c
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type}
+            num_workers: 0
+            spark_conf: *single_node_conf
+            custom_tags:
+              ResourceClass: SingleNode
+              project: lakeforge
+              perf_variant: single_4c
+            data_security_mode: SINGLE_USER
+            azure_attributes: *spot
+
+        - job_cluster_key: single_4c_photon
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type}
+            num_workers: 0
+            runtime_engine: PHOTON
+            spark_conf: *single_node_conf
+            custom_tags:
+              ResourceClass: SingleNode
+              project: lakeforge
+              perf_variant: single_4c_photon
+            data_security_mode: SINGLE_USER
+            azure_attributes: *spot
+
+        - job_cluster_key: two_node_8c
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type}
+            num_workers: 1
+            custom_tags:
+              project: lakeforge
+              perf_variant: two_node_8c
+            data_security_mode: SINGLE_USER
+            azure_attributes: *spot
+
+        - job_cluster_key: single_8c
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: Standard_D8s_v3
+            num_workers: 0
+            spark_conf: *single_node_conf
+            custom_tags:
+              ResourceClass: SingleNode
+              project: lakeforge
+              perf_variant: single_8c
+            data_security_mode: SINGLE_USER
+            azure_attributes: *spot
+
+      tasks:
+        - task_key: generate
+          job_cluster_key: lab
+          notebook_task:
+            notebook_path: ../notebooks/perf/10_generate.py
+            base_parameters: &nb_params
+              env: ${bundle.target}
+              storage_account: ${var.storage_account}
+              rows: "50000000"
+          timeout_seconds: 7200
+
+        - task_key: layout_lab
+          depends_on: [{task_key: generate}]
+          job_cluster_key: lab
+          notebook_task:
+            notebook_path: ../notebooks/perf/11_layout_lab.py
+            base_parameters: *nb_params
+          timeout_seconds: 3600
+
+        - task_key: query_lab
+          depends_on: [{task_key: layout_lab}]
+          job_cluster_key: lab
+          notebook_task:
+            notebook_path: ../notebooks/perf/12_query_lab.py
+            base_parameters: *nb_params
+          timeout_seconds: 3600
+
+        - task_key: maintenance_lab
+          depends_on: [{task_key: query_lab}]
+          job_cluster_key: lab
+          notebook_task:
+            notebook_path: ../notebooks/perf/13_maintenance_lab.py
+            base_parameters: *nb_params
+          timeout_seconds: 1800
+
+        - task_key: probe_single_4c
+          depends_on: [{task_key: maintenance_lab}]
+          job_cluster_key: single_4c
+          notebook_task:
+            notebook_path: ../notebooks/perf/14_cluster_probe.py
+            base_parameters:
+              env: ${bundle.target}
+              storage_account: ${var.storage_account}
+              variant: single_4c
+          max_retries: 2
+          min_retry_interval_millis: 180000
+          timeout_seconds: 2700
+
+        - task_key: probe_single_4c_photon
+          depends_on: [{task_key: probe_single_4c}]
+          job_cluster_key: single_4c_photon
+          notebook_task:
+            notebook_path: ../notebooks/perf/14_cluster_probe.py
+            base_parameters:
+              env: ${bundle.target}
+              storage_account: ${var.storage_account}
+              variant: single_4c_photon
+          max_retries: 2
+          min_retry_interval_millis: 180000
+          timeout_seconds: 2700
+
+        - task_key: probe_two_node_8c
+          depends_on: [{task_key: probe_single_4c_photon}]
+          job_cluster_key: two_node_8c
+          notebook_task:
+            notebook_path: ../notebooks/perf/14_cluster_probe.py
+            base_parameters:
+              env: ${bundle.target}
+              storage_account: ${var.storage_account}
+              variant: two_node_8c
+          max_retries: 2
+          min_retry_interval_millis: 180000
+          timeout_seconds: 2700
+
+        - task_key: probe_single_8c
+          depends_on: [{task_key: probe_two_node_8c}]
+          job_cluster_key: single_8c
+          notebook_task:
+            notebook_path: ../notebooks/perf/14_cluster_probe.py
+            base_parameters:
+              env: ${bundle.target}
+              storage_account: ${var.storage_account}
+              variant: single_8c
+          max_retries: 2
+          min_retry_interval_millis: 180000
+          timeout_seconds: 2700
