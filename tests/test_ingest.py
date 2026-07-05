@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pyspark.sql import functions as F
 
+from lakeforge.config import LakeforgeConfig
+from lakeforge.ingest.files import landing_has_files, run_bronze_files
 from lakeforge.ingest.sql import merge_increment, with_load_metadata
 
 T0 = datetime(2026, 7, 1, 10, 0, 0)
@@ -31,3 +33,21 @@ def test_merge_increment_keeps_versions_and_is_idempotent(spark, cfg):
     bronze = spark.table(cfg.table("bronze", "orders"))
     assert bronze.count() == 2
     assert bronze.where(F.col("status") == "delivered").count() == 1
+
+
+def test_landing_has_files(tmp_path):
+    assert not landing_has_files(str(tmp_path / "missing"))
+    (tmp_path / "shipments").mkdir()
+    assert not landing_has_files(str(tmp_path / "shipments"))
+    nested = tmp_path / "shipments" / "2026" / "07"
+    nested.mkdir(parents=True)
+    (nested / "drop.csv").write_text("a,b\n1,2\n")
+    assert landing_has_files(str(tmp_path / "shipments"))
+
+
+def test_run_bronze_files_skips_empty_landing(spark, tmp_path):
+    # The first prod cron run failed on exactly this: Auto Loader cannot
+    # infer a schema from an empty landing dir. An empty day must be 0 rows,
+    # not a job failure.
+    cfg = LakeforgeConfig(env="test", catalog="spark_catalog", landing_root=str(tmp_path))
+    assert run_bronze_files(spark, cfg, "shipments") == 0

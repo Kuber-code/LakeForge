@@ -13,10 +13,26 @@ unit-testable without cloudFiles (which only exists on Databricks).
 
 from __future__ import annotations
 
+import os
+
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
 from lakeforge.config import FILE_SOURCES, LakeforgeConfig
+
+
+def landing_has_files(path: str) -> bool:
+    """True when at least one file exists under ``path`` (recursively).
+
+    Auto Loader cannot infer a schema from an empty directory
+    (CF_EMPTY_DIR_FOR_SCHEMA_INFERENCE) — first observed on the very first
+    prod cron run, whose landing volume had no distributor drops yet. Landing
+    volumes are FUSE-mounted (/Volumes/...) and tests use local paths, so a
+    plain filesystem walk covers both.
+    """
+    if not os.path.isdir(path):
+        return False
+    return any(files for _, _, files in os.walk(path))
 
 
 def with_ingest_metadata(df: DataFrame) -> DataFrame:
@@ -56,7 +72,14 @@ def bronze_files_stream(
 
 
 def run_bronze_files(spark: SparkSession, cfg: LakeforgeConfig, source: str) -> int:
-    """Ingest all currently available files for one source; returns rows written."""
+    """Ingest all currently available files for one source; returns rows written.
+
+    An empty (or missing) landing folder is a normal day, not an error: the
+    run reports 0 rows and downstream layers proceed on existing bronze.
+    """
+    if not landing_has_files(cfg.landing_path(source)):
+        print(f"landing path {cfg.landing_path(source)} is empty; skipping {source}")
+        return 0
     stream, target, checkpoint = bronze_files_stream(spark, cfg, source)
     query = (
         stream.writeStream.format("delta")
