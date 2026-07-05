@@ -39,7 +39,7 @@ provider "databricks" {
 # provider, and skipping the read keeps `terraform plan` working from machines
 # that cannot reach the private Key Vault (FR-1.8 end state).
 data "azurerm_key_vault_secret" "infra_sp" {
-  count        = var.enable_account_groups ? 1 : 0
+  count        = (var.enable_account_groups || var.enable_ncc) ? 1 : 0
   name         = "sp-infra-client-secret"
   key_vault_id = local.core.key_vault_id
 }

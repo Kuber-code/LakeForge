@@ -51,6 +51,8 @@ Result: the attack surface of the data plane is the NAT gateway's *outbound* con
 
 **Cluster → control plane:** outbound-only 443 to the `AzureDatabricks` service tag (relay tunnel), via NAT gateway.
 
+**Serverless SQL warehouse → ADLS (dashboards):** serverless compute lives in the *Databricks* account network, not our VNet, so it cannot use the VNet's private endpoints and the storage firewall (`default_action = Deny`) blocks it. The fix is a **Network Connectivity Config (NCC)**: an account-level object holding Databricks-managed private endpoints into our storage account (`dfs` + `blob` sub-resources), bound to the workspace. Packet path once approved: serverless node → NCC private endpoint → Private Link → storage — never over the public endpoint. Provisioned by `scripts/setup_ncc.py`; see ADR-0008. This is what lets the P4 dashboards render while FR-1.8's public-access-denied posture stays intact.
+
 ## What SCC + private endpoints change, concretely
 
 | | Before (defaults) | After (LakeForge) |
@@ -71,7 +73,7 @@ Deploying straight to `public_network_access = false` fails: the machine running
 Operational consequences, accepted for a portfolio project:
 
 - ad-hoc laptop access to storage/KV requires temporarily re-enabling public access with `terraform apply` (or going through the workspace); Terraform itself refreshes KV secret resources over the data plane, so a dev session typically starts by flipping open and ends by flipping closed;
-- **serverless** SQL warehouses run in Databricks-managed VNets, *not* in ours — with storage public access denied they cannot reach ADLS until account-level Network Connectivity Config (NCC) private endpoints are set up (account console; pending, see identity matrix). Classic VNet-injected clusters are unaffected — they resolve the private endpoint. Grants were verified through the warehouse before the flip;
+- **serverless** SQL warehouses run in Databricks-managed VNets, *not* in ours — with storage public access denied they could not reach ADLS until the account-level Network Connectivity Config (NCC) private endpoints were set up (done 2026-07-05, see the serverless packet path above and ADR-0008). Classic VNet-injected clusters were never affected — they resolve the private endpoint directly;
 - CI in P3 uses Microsoft-hosted agents → Terraform data-plane operations must happen before the flip or via the `AzureServices` bypass.
 
 ## NSGs
